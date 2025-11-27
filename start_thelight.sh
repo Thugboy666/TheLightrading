@@ -41,6 +41,7 @@ LLM_THREADS="${LLM_THREADS:-6}"
 LLM_CTX="${LLM_CTX:-1024}"
 
 API_PORT="8080"
+API_HOST="${API_HOST:-0.0.0.0}"
 
 stop_dead_pidfile() {
   PF="$1"
@@ -139,11 +140,14 @@ fi
 if [ -f "$RUN_DIR/gui.pid" ] && kill -0 "$(cat "$RUN_DIR/gui.pid")" 2>/dev/null; then
   echo "ℹ️  API+GUI già avviate (PID $(cat "$RUN_DIR/gui.pid"))."
 else
-  echo "▶️  Avvio API+GUI (python api/server.py) su porta $API_PORT"
-  (cd "$BASEDIR" && \
-    THELIGHT_UI_INDEX="$UI_INDEX" \
+  echo "▶️  Avvio API+GUI (python api/server.py) su ${API_HOST}:${API_PORT}"
+  (
+    cd "$BASEDIR" && \
+    API_HOST="$API_HOST" \
+    API_PORT="$API_PORT" \
     LLM_BACKEND_URL="http://127.0.0.1:${LLM_PORT}/completion" \
-    nohup python api/server.py > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$RUN_DIR/gui.pid")
+    nohup python api/server.py > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$RUN_DIR/gui.pid"
+  )
   sleep 2
 fi
 
