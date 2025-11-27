@@ -215,6 +215,10 @@ def create_app() -> web.Application:
     # GUI
     app.router.add_get("/", ui_index)
 
+    # STATIC: assets GUI (logo + textures)
+    assets_path = BASE_DIR / "gui" / "assets"
+    app.router.add_static("/assets/", path=str(assets_path), name="assets")
+
     # SYSTEM
     app.router.add_get("/system/health", health)
 

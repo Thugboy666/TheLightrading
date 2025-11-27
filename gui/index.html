@@ -38,13 +38,14 @@
       top: 0;
       left: 0;
       right: 0;
-      padding: 6px 10px;
+      padding: 8px 10px 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: rgba(255,255,255,0.9);
       z-index: 50;
       gap: 6px;
+      min-height: 46px;
     }
     #brand {
       display: flex;
@@ -125,7 +126,7 @@
     /* Top-right controls (Indietro + Chat AI) */
     #top-right-controls {
       position: absolute;
-      top: 56px;
+      top: 52px;
       right: 10px;
       z-index: 25;
       display: flex;
@@ -154,7 +155,7 @@
 
     @media (max-width: 480px) {
       #top-right-controls {
-        top: 68px;
+        top: 72px;
         right: 8px;
         flex-direction: row;
         flex-wrap: wrap;
@@ -225,6 +226,40 @@
       flex-wrap: wrap;
       gap: 4px;
       margin-top: 2px;
+    }
+    #entity-offer-box {
+      margin-top: 4px;
+      padding: 6px 8px;
+      border-radius: 10px;
+      border: 1px dashed var(--accent-color);
+      background: rgba(255,123,0,0.06);
+      font-size: 11px;
+      color: #000000;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #discount-sim-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #discount-sim-row label {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    #discount-sim-input {
+      border-radius: 10px;
+      border: 1px solid var(--accent-color);
+      padding: 6px 8px;
+      background: #ffffff;
+      color: #000000;
+      font-size: 12px;
+    }
+    #discount-sim-output {
+      font-size: 11px;
+      color: #000000;
+      opacity: 0.9;
     }
     .tag {
       border-radius: 999px;
@@ -471,7 +506,7 @@
   <!-- TOP BAR -->
   <div id="top-bar">
     <div id="brand">
-      <img id="brand-logo" src="assets/logo_ormanet.png" alt="Ormanet" />
+      <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" />
       <div id="brand-sub">powered by thelight24</div>
       <div id="brand-title"></div>
     </div>
@@ -517,6 +552,15 @@
         </div>
       </div>
       <div id="entity-tags"></div>
+      <div id="entity-offer-box">
+        <div id="entity-offer-title" style="font-weight:600;"></div>
+        <div id="entity-offer-gift"></div>
+        <div id="discount-sim-row">
+          <label id="discount-sim-label"></label>
+          <input id="discount-sim-input" type="number" min="0" step="1" placeholder="Inserisci importo" />
+          <div id="discount-sim-output"></div>
+        </div>
+      </div>
       <div id="entity-admin-actions">
         <button class="btn secondary" id="btn-edit-product" style="font-size:10px;padding-inline:8px;">Modifica scheda</button>
       </div>
@@ -928,49 +972,93 @@
   const LLM_URL = "http://127.0.0.1:8081/completion";
 
   const SYSTEM_TEXTURES = {
-    ormanet: "assets/textures/1.png",
+    ormanet: "/assets/textures/1.png",
   };
 
   const CATEGORY_TEXTURES = {
-    "batterie": "assets/textures/2.png",
-    "cancelleria": "assets/textures/3.png",
-    "carta-stampa": "assets/textures/4.png",
-    "consumabili-originali": "assets/textures/5.png",
-    "elettronica": "assets/textures/6.png",
-    "eliminacode": "assets/textures/7.png",
-    "rotoli-termici": "assets/textures/8.png",
-    "stampanti": "assets/textures/9.png",
-    "storage": "assets/textures/10.png",
-    "consumabili-remanufactured": "assets/textures/11.png",
+    "batterie": "/assets/textures/2.png",
+    "cancelleria": "/assets/textures/3.png",
+    "carta-stampa": "/assets/textures/4.png",
+    "consumabili-originali": "/assets/textures/5.png",
+    "elettronica": "/assets/textures/6.png",
+    "eliminacode": "/assets/textures/7.png",
+    "rotoli-termici": "/assets/textures/8.png",
+    "stampanti": "/assets/textures/9.png",
+    "storage": "/assets/textures/10.png",
+    "consumabili-remanufactured": "/assets/textures/11.png",
   };
 
   let priceList = [];
   let clients = [];
   const offersUniverse = [
     {
-      id: "offerta-consumabili-originali",
-      name: "Sconti consumabili originali",
-      title: "Sconti consumabili originali",
-      texture: CATEGORY_TEXTURES["consumabili-originali"],
+      id: "ormanet",
+      name: "Ormanet B2B",
+      title: "Ormanet – Universe B2B",
+      texture: SYSTEM_TEXTURES["ormanet"],
       position: { x: 0, y: 1, z: -8 },
+      tags: ["B2B", "Smart purchasing"],
       categories: [
         {
-          id: "hp-original",
-          name: "HP Originali",
-          color: 0xff7b00,
-          tags: ["originali", "HP"],
-          subcategories: [
-            { id: "bundle-hp", name: "Bundle HP" }
-          ]
+          id: "batterie",
+          name: "Batterie",
+          tags: ["energia", "ricarica"],
+          subcategories: [{ id: "batterie-gift", name: "Gift Kit Energia" }]
         },
         {
-          id: "brother-original",
-          name: "Brother Originali",
-          color: 0xff7b00,
-          tags: ["originali", "Brother"],
-          subcategories: [
-            { id: "bundle-brother", name: "Bundle Brother" }
-          ]
+          id: "cancelleria",
+          name: "Cancelleria",
+          tags: ["ufficio"],
+          subcategories: [{ id: "cancelleria-gift", name: "Box ufficio" }]
+        },
+        {
+          id: "carta-stampa",
+          name: "Carta per stampa",
+          tags: ["risme", "ufficio"],
+          subcategories: [{ id: "carta-gift", name: "Pacco premium" }]
+        },
+        {
+          id: "consumabili-originali",
+          name: "Consumabili originali",
+          tags: ["toner", "inkjet", "originali"],
+          offerId: "offerta-consumabili-originali",
+          subcategories: [{ id: "consumabili-gift", name: "Box regalo consumabili" }]
+        },
+        {
+          id: "elettronica",
+          name: "Elettronica",
+          tags: ["device", "pc", "monitor"],
+          subcategories: [{ id: "elettronica-gift", name: "Bundle tech" }]
+        },
+        {
+          id: "eliminacode",
+          name: "Eliminacode",
+          tags: ["gestione flussi"],
+          subcategories: [{ id: "eliminacode-gift", name: "Kit front-office" }]
+        },
+        {
+          id: "rotoli-termici",
+          name: "Rotoli termici",
+          tags: ["pos", "ricevute"],
+          subcategories: [{ id: "rotoli-gift", name: "Box rotoli" }]
+        },
+        {
+          id: "stampanti",
+          name: "Stampanti",
+          tags: ["laser", "inkjet"],
+          subcategories: [{ id: "stampanti-gift", name: "Bundle stampanti" }]
+        },
+        {
+          id: "storage",
+          name: "Storage",
+          tags: ["ssd", "hdd", "backup"],
+          subcategories: [{ id: "storage-gift", name: "Box storage" }]
+        },
+        {
+          id: "consumabili-remanufactured",
+          name: "Remanufactured",
+          tags: ["green", "remanufactured"],
+          subcategories: [{ id: "reman-gift", name: "Box eco" }]
         }
       ]
     }
@@ -1017,6 +1105,7 @@
   let currentOfferIndex = 0;
 
   const canvas = document.getElementById("universe-canvas");
+  const appEl = document.getElementById("app");
   const tierLabel = document.getElementById("tier-label");
   const zoomLevelLabel = document.getElementById("zoom-level");
   const locationPathLabel = document.getElementById("location-path");
@@ -1029,6 +1118,12 @@
   const entityRatingEl = document.getElementById("entity-rating");
   const entityPriceEl = document.getElementById("entity-price");
   const entityTagsEl = document.getElementById("entity-tags");
+  const entityOfferBox = document.getElementById("entity-offer-box");
+  const entityOfferTitle = document.getElementById("entity-offer-title");
+  const entityOfferGift = document.getElementById("entity-offer-gift");
+  const discountSimLabel = document.getElementById("discount-sim-label");
+  const discountSimInput = document.getElementById("discount-sim-input");
+  const discountSimOutput = document.getElementById("discount-sim-output");
   const entityQtyWrapper = document.getElementById("entity-qty-wrapper");
   const entityQtyInput = document.getElementById("entity-qty");
   const entityAdminActions = document.getElementById("entity-admin-actions");
@@ -1260,19 +1355,68 @@
 
   function renderDiscountPreview() {
     if (!discountPreview) return;
-    const offerId = discountOfferSelect.value;
-    const cfg = discountConfigs.find((c) => c.id === offerId);
-    if (!cfg) { discountPreview.textContent = ""; return; }
-    const rows = Object.entries(cfg.rules).map(([segment, rules]) => {
-      const rowsHtml = rules.map(r => `<li>${segment}: ${r.min} - ${r.max === Infinity ? "∞" : r.max} → ${r.discount}% fino al ${r.valid_until}</li>`).join("");
-      return `<ul style="margin:4px 0 6px; padding-left:16px;">${rowsHtml}</ul>`;
+    const header = `
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:2px 4px;">ID offerta</th>
+          <th style="text-align:left;padding:2px 4px;">Titolo</th>
+          <th style="text-align:left;padding:2px 4px;">Segmento</th>
+          <th style="text-align:left;padding:2px 4px;">Range</th>
+          <th style="text-align:left;padding:2px 4px;">%</th>
+          <th style="text-align:left;padding:2px 4px;">Validità</th>
+        </tr>
+      </thead>`;
+    const bodyRows = discountConfigs.map((cfg) => {
+      const segments = Object.entries(cfg.rules || {});
+      if (!segments.length) {
+        return `<tr>
+          <td style="padding:2px 4px;">${cfg.id}</td>
+          <td style="padding:2px 4px;">${findOfferTitle(cfg.id)}</td>
+          <td colspan="4" style="padding:2px 4px;">Nessuna regola configurata</td>
+        </tr>`;
+      }
+      return segments.map(([segment, rules]) => {
+        if (!rules.length) {
+          return `<tr>
+            <td style="padding:2px 4px;">${cfg.id}</td>
+            <td style="padding:2px 4px;">${findOfferTitle(cfg.id)}</td>
+            <td style="padding:2px 4px;">${segment}</td>
+            <td colspan="3" style="padding:2px 4px;">Nessuna fascia</td>
+          </tr>`;
+        }
+        return rules.map((r) => {
+          const maxLabel = r.max === Infinity ? "∞" : r.max;
+          return `<tr>
+            <td style="padding:2px 4px;">${cfg.id}</td>
+            <td style="padding:2px 4px;">${findOfferTitle(cfg.id)}</td>
+            <td style="padding:2px 4px;">${segment}</td>
+            <td style="padding:2px 4px;">${r.min} – ${maxLabel}</td>
+            <td style="padding:2px 4px;">${r.discount}%</td>
+            <td style="padding:2px 4px;">${formatDateLabel(r.valid_until)}</td>
+          </tr>`;
+        }).join("");
+      }).join("");
     }).join("");
-    discountPreview.innerHTML = rows;
+
+    discountPreview.innerHTML = discountConfigs.length
+      ? `<table style="width:100%; border-collapse:collapse; font-size:11px;">${header}<tbody>${bodyRows}</tbody></table>`
+      : "";
   }
 
   function ensureDiscountSelectFilled() {
     if (!discountOfferSelect) return;
-    discountOfferSelect.innerHTML = offersUniverse.map(o => `<option value="${o.id}">${o.title || o.name}</option>`).join("");
+    const opts = [];
+    const known = new Set();
+    offersUniverse.forEach((o) => {
+      known.add(o.id);
+      opts.push(`<option value="${o.id}">${o.title || o.name}</option>`);
+    });
+    discountConfigs.forEach((cfg) => {
+      if (!known.has(cfg.id)) {
+        opts.push(`<option value="${cfg.id}">${cfg.id}</option>`);
+      }
+    });
+    discountOfferSelect.innerHTML = opts.join("");
   }
 
   async function addDiscountRule() {
@@ -1542,6 +1686,17 @@
     return v.toFixed(2) + " €";
   }
 
+  const euroFormatter = new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 2,
+  });
+
+  function formatEuro(v) {
+    if (!isFinite(v)) return "";
+    return euroFormatter.format(v);
+  }
+
   function updatePreview() {
     const html = descHtmlInput.value || "";
     descPreview.innerHTML = html;
@@ -1703,14 +1858,15 @@
     const el = document.createElement("div");
     el.className = "floating-tag";
     el.textContent = text;
-    document.body.appendChild(el);
+    (appEl || document.body).appendChild(el);
     floatingTags.set(mesh, el);
     return el;
   }
 
   function updateFloatingTags() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const rect = canvas.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
 
     floatingTags.forEach((el, mesh) => {
       if (!mesh || !mesh.position) return;
@@ -1718,8 +1874,8 @@
       mesh.getWorldPosition(vector);
       vector.project(camera);
 
-      const x = (vector.x * 0.5 + 0.5) * width;
-      const y = (-vector.y * 0.5 + 0.5) * height;
+      const x = rect.left + (vector.x * 0.5 + 0.5) * width;
+      const y = rect.top + (-vector.y * 0.5 + 0.5) * height;
 
       el.style.left = `${x}px`;
       el.style.top = `${y - 30}px`;
@@ -1732,7 +1888,7 @@
     0.1,
     100
   );
-  camera.position.set(0, 2, 14);
+  camera.position.set(0, 3.5, 14);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1777,7 +1933,7 @@
       const size = 1.4;
       const geo = new THREE.BoxGeometry(size, size, size);
 
-      const texPath = SYSTEM_TEXTURES[sys.id] || null;
+      const texPath = sys.texture || SYSTEM_TEXTURES[sys.id] || null;
 
       let map = null;
       if (texPath) {
@@ -1789,6 +1945,8 @@
             console.error("Errore texture sistema", sys.id, texPath, err);
           }
         );
+      } else {
+        console.warn("Texture sistema mancante", sys.id);
       }
 
       const mat = new THREE.MeshStandardMaterial({
@@ -1814,7 +1972,7 @@
     targetRotY = 0;
 
     const centerGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
-    const centerTexPath = SYSTEM_TEXTURES[system.id] || null;
+    const centerTexPath = system.texture || SYSTEM_TEXTURES[system.id] || null;
 
     let centerMap = null;
     if (centerTexPath) {
@@ -1834,7 +1992,7 @@
       roughness: 0.4
     });
     const center = new THREE.Mesh(centerGeo, centerMat);
-    center.position.set(0, 1, 0);
+    center.position.set(0, 1.5, 0);
     scene.add(center);
     objects.push({ type: "system-center", ref: system, mesh: center });
     createFloatingTagForObject(center, system.name);
@@ -1845,7 +2003,7 @@
     system.categories.forEach((cat, idx) => {
       const orbitRadius = radiusBase + idx * 1.3;
 
-      const catTexPath = CATEGORY_TEXTURES[cat.id] || null;
+      const catTexPath = cat.texture || CATEGORY_TEXTURES[cat.id] || null;
 
       let catMap = null;
       if (catTexPath) {
@@ -1857,6 +2015,8 @@
             console.error("Errore texture categoria", cat.id, catTexPath, err);
           }
         );
+      } else {
+        console.warn("Texture categoria mancante", cat.id);
       }
 
       const catMat = new THREE.MeshStandardMaterial({
@@ -1870,7 +2030,7 @@
       const angle = (idx / system.categories.length) * Math.PI * 2;
       box.position.set(
         orbitRadius * Math.cos(angle),
-        1,
+        1.2,
         orbitRadius * Math.sin(angle)
       );
       scene.add(box);
@@ -1881,7 +2041,7 @@
       // Satelliti per sottocategorie
       const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       cat.subcategories?.forEach((sub, jdx) => {
-        const subTexPath = CATEGORY_TEXTURES[sub.id] || null;
+        const subTexPath = sub.texture || CATEGORY_TEXTURES[sub.id] || null;
 
         let subMap = null;
         if (subTexPath) {
@@ -1924,7 +2084,7 @@
     targetRotY = 0;
 
     const planetGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
-    const planetTexPath = CATEGORY_TEXTURES[category.id] || null;
+    const planetTexPath = category.texture || CATEGORY_TEXTURES[category.id] || null;
 
     let planetMap = null;
     if (planetTexPath) {
@@ -1936,6 +2096,8 @@
           console.error("Errore texture categoria", category.id, planetTexPath, err);
         }
       );
+    } else {
+      console.warn("Texture pianeta mancante", category.id);
     }
     const planetMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -1944,7 +2106,7 @@
       roughness: 0.4
     });
     const planet = new THREE.Mesh(planetGeo, planetMat);
-    planet.position.set(0, 1, 0);
+    planet.position.set(0, 1.5, 0);
     scene.add(planet);
     objects.push({ type: "planet", ref: { category, subcategory }, mesh: planet });
 
@@ -1955,7 +2117,7 @@
       let prodMap = null;
       if (prod?.sku) {
         prodMap = textureLoader.load(
-          `assets/textures/products/${prod.sku}.png`,
+          `/assets/textures/products/${prod.sku}.png`,
           undefined,
           undefined,
           (err) => {
@@ -1976,7 +2138,7 @@
       const angle = (idx / Math.max(products.length, 1)) * Math.PI * 2;
       satellite.position.set(
         ringRadius * Math.cos(angle),
-        1,
+        1.1,
         ringRadius * Math.sin(angle)
       );
       scene.add(satellite);
@@ -2018,7 +2180,7 @@
     clearDynamicObjects();
     addGalaxy();
     addSystems();
-    camera.position.set(0, 2, 14);
+    camera.position.set(0, 3.5, 14);
     zoomLevel = "GALASSIA";
     currentPath = [];
     currentSystem = null;
@@ -2038,7 +2200,7 @@
     currentSystem = system;
     zoomLevel = "SYSTEM";
     currentPath = [system.name];
-    camera.position.set(0, 3, 11);
+    camera.position.set(0, 3.5, 11);
     buildSystemView(system);
     showSystemCard(system);
     updateLabels();
@@ -2058,7 +2220,7 @@
     currentSubcategory = sub;
     zoomLevel = "PLANET";
     currentPath = [currentSystem.name, cat.name, sub.name];
-    camera.position.set(0, 3, 7.5);
+    camera.position.set(0, 4, 7.5);
     buildPlanetView(cat, sub);
     showCategoryCard(currentSystem, cat);
     updateLabels();
@@ -2148,6 +2310,96 @@
     entityPriceEl.textContent = "";
     entityQtyWrapper.style.display = "none";
     entityAdminActions.style.display = "none";
+    if (entityOfferBox) entityOfferBox.style.display = "none";
+  }
+
+  function findOfferTitle(offerId) {
+    const offer = offersUniverse.find((o) => o.id === offerId);
+    return offer?.title || offer?.name || offerId;
+  }
+
+  function findDiscountConfig(offerId) {
+    return discountConfigs.find((c) => c.id === offerId);
+  }
+
+  function formatDateLabel(dateStr) {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  function getLatestValidUntil(rules = []) {
+    let best = null;
+    rules.forEach((r) => {
+      if (!r.valid_until) return;
+      const d = new Date(r.valid_until);
+      if (Number.isNaN(d.getTime())) return;
+      if (!best || d > best) best = d;
+    });
+    return best ? best.toISOString().slice(0, 10) : null;
+  }
+
+  function renderDiscountSimulator(cat) {
+    if (!entityOfferBox) return;
+    const offerId = cat.offerId || cat.id;
+    const cfg = findDiscountConfig(offerId);
+
+    discountSimInput.value = "";
+    discountSimOutput.textContent = "";
+
+    if (!cfg) {
+      entityOfferBox.style.display = "none";
+      return;
+    }
+
+    entityOfferBox.style.display = "flex";
+    entityOfferTitle.textContent = `${cat.name} – Box regalo`;
+    entityOfferGift.textContent = `Box regalo dedicato collegato a ${findOfferTitle(offerId)}.`;
+
+    const segment = currentUser?.tier || "ospite";
+    const rules = (cfg.rules && cfg.rules[segment]) || [];
+    const expiry = getLatestValidUntil(rules);
+    const expiryLabel = formatDateLabel(expiry);
+    discountSimLabel.textContent =
+      `Dimmi quanto vuoi spendere nel tuo prossimo ordine e ti dico quanto risparmi fino al ${expiryLabel}`;
+
+    if (!currentUser.logged) {
+      discountSimInput.disabled = true;
+      discountSimOutput.textContent = "Accedi per vedere il tuo risparmio";
+      return;
+    }
+
+    discountSimInput.disabled = false;
+    if (!rules.length) {
+      discountSimOutput.textContent = "Nessuna fascia configurata per il tuo listino.";
+      discountSimInput.oninput = null;
+      discountSimInput.onchange = null;
+      return;
+    }
+
+    const computeSim = () => {
+      const amount = parseFloat(discountSimInput.value || "0");
+      if (!amount || !isFinite(amount)) {
+        discountSimOutput.textContent = "";
+        return;
+      }
+      const rule = rules.find((r) => amount >= r.min && amount <= (r.max === Infinity ? amount : r.max));
+      if (!rule) {
+        discountSimOutput.textContent = "Importo non rientra in nessuna fascia configurata.";
+        return;
+      }
+      const saved = amount * (rule.discount / 100);
+      const final = amount - saved;
+      discountSimOutput.textContent =
+        `Con un ordine di ${formatEuro(amount)} risparmi ${rule.discount}% = ${formatEuro(saved)} (paghi ${formatEuro(final)})`;
+    };
+
+    discountSimInput.oninput = computeSim;
+    discountSimInput.onchange = computeSim;
   }
 
   function showCategoryCard(system, cat) {
@@ -2169,6 +2421,7 @@
     entityPriceEl.textContent = "";
     entityQtyWrapper.style.display = "none";
     entityAdminActions.style.display = "none";
+    renderDiscountSimulator(cat);
   }
 
   function raycastFromTap(x, y) {
