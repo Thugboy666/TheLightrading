@@ -984,13 +984,17 @@
     "batterie": "/assets/textures/2.png",
     "cancelleria": "/assets/textures/3.png",
     "carta-stampa": "/assets/textures/4.png",
+    "carta_stampa": "/assets/textures/4.png",
     "consumabili-originali": "/assets/textures/5.png",
+    "consumabili_originali": "/assets/textures/5.png",
     "elettronica": "/assets/textures/6.png",
     "eliminacode": "/assets/textures/7.png",
     "rotoli-termici": "/assets/textures/8.png",
+    "rotoli_termici": "/assets/textures/8.png",
     "stampanti": "/assets/textures/9.png",
     "storage": "/assets/textures/10.png",
     "consumabili-remanufactured": "/assets/textures/11.png",
+    "consumabili_remanufactured": "/assets/textures/11.png",
   };
 
   const adminSettings = {
@@ -2065,7 +2069,16 @@
   function getTexturePathForCategory(category) {
     if (!category) return null;
     if (category.texture) return category.texture;
-    return CATEGORY_TEXTURES[category.id] || null;
+    const id = category.id;
+    if (CATEGORY_TEXTURES[id]) return CATEGORY_TEXTURES[id];
+
+    const dashedId = id?.replace(/_/g, "-");
+    if (dashedId && CATEGORY_TEXTURES[dashedId]) return CATEGORY_TEXTURES[dashedId];
+
+    const underscoredId = id?.replace(/-/g, "_");
+    if (underscoredId && CATEGORY_TEXTURES[underscoredId]) return CATEGORY_TEXTURES[underscoredId];
+
+    return null;
   }
 
   function updateCubeTextures() {
