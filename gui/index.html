@@ -1800,9 +1800,9 @@
     llmStatus.textContent = "Il modello sta pensando...";
 
     const systemPrompt =
-      "Sei l'assistente locale di TheLight24 Universe. " +
-      "Rispondi in italiano, tono professionale ma conciso, " +
-      "e se ti viene chiesto di prodotti, ragiona come assistente B2B e-commerce.";
+      "Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. " +
+      "Rispondi SEMPRE in italiano, in massimo 3 frasi brevi. " +
+      "Se ti viene chiesto di prodotti, ragiona come assistente B2B e-commerce.";
 
     const fullPrompt = systemPrompt + "\n\nUtente: " + text + "\nAssistente:";
 
@@ -1812,7 +1812,7 @@
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           prompt: fullPrompt,
-          n_predict: 200,
+          n_predict: 96,
           temperature: 0.7,
           top_k: 40,
           top_p: 0.9,
