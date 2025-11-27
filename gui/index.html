@@ -7,12 +7,13 @@
   <style>
     :root {
       color-scheme: light;
+      --accent-color: #ff7b00;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #2596be;
+      background: #ffffff;
       color: #000000;
       overflow: hidden;
       height: 100dvh;
@@ -28,6 +29,7 @@
       position: absolute;
       inset: 0;
       touch-action: none;
+      z-index: 1;
     }
 
     /* Top bar */
@@ -82,7 +84,7 @@
       font-size: 10px;
       padding: 4px 8px;
       border-radius: 999px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       background: #ffffff;
       display: inline-flex;
       align-items: center;
@@ -95,7 +97,7 @@
       font-size: 11px;
       border-radius: 999px;
       padding: 4px 10px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       color: #000000;
       background: #ffffff;
       cursor: pointer;
@@ -103,7 +105,7 @@
     }
     .btn.secondary {
       background: #ffffff;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       color: #000000;
     }
     .btn:active { transform: scale(0.97); }
@@ -137,7 +139,7 @@
       font-size: 10px;
       padding: 4px 8px;
       border-radius: 999px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       background: #ffffff;
       color: #000000;
       cursor: pointer;
@@ -182,7 +184,7 @@
       background: #ffffff;
       border-radius: 14px;
       padding: 8px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       display: none;
       flex-direction: column;
       gap: 4px;
@@ -213,7 +215,7 @@
       width: 60px;
       border-radius: 999px;
       padding: 3px 6px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       background: #ffffff;
       color: #000000;
       font-size: 11px;
@@ -247,9 +249,18 @@
       flex-direction: column;
       gap: 6px;
     }
+    #offer-nav-arrows {
+      position: absolute;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 18;
+    }
     .icon-btn {
       border-radius: 999px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       background: #ffffff;
       color: #000000;
       font-size: 12px;
@@ -260,6 +271,20 @@
       cursor: pointer;
     }
     .icon-btn span { font-size: 13px; }
+
+    .floating-tag {
+      position: absolute;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #ffffff;
+      border: 1px solid var(--accent-color);
+      font-size: 11px;
+      color: #000000;
+      pointer-events: none;
+      text-align: center;
+      transform: translate(-50%, -50%);
+      z-index: 30;
+    }
 
     /* Modal / sheets */
     .backdrop {
@@ -277,7 +302,7 @@
       background: #ffffff;
       border-radius: 18px 18px 0 0;
       padding: 10px 14px 14px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       overflow-y: auto;
       color: #000000;
     }
@@ -304,7 +329,7 @@
       width: 100%;
       padding: 6px 8px;
       border-radius: 8px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       background: #ffffff;
       color: #000000;
       font-size: 12px;
@@ -335,7 +360,7 @@
 
     .html-preview {
       border-radius: 8px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       padding: 6px 8px;
       font-size: 11px;
       background: #ffffff;
@@ -357,7 +382,7 @@
       justify-content: space-between;
       gap: 4px;
       padding: 4px 0;
-      border-bottom: 1px solid #2596be;
+      border-bottom: 1px solid var(--accent-color);
     }
     .cart-main { flex: 1; }
     .cart-sku { font-size: 9px; opacity: 0.6; }
@@ -391,7 +416,7 @@
     }
     #llm-chat-log {
       border-radius: 10px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       padding: 6px 8px;
       font-size: 11px;
       background: #ffffff;
@@ -410,13 +435,13 @@
     }
     .llm-msg.user {
       align-self: flex-end;
-      background: rgba(37,150,190,0.15);
-      border: 1px solid #2596be;
+      background: rgba(255,123,0,0.15);
+      border: 1px solid var(--accent-color);
     }
     .llm-msg.bot {
       align-self: flex-start;
       background: #ffffff;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
     }
     #llm-status {
       font-size: 10px;
@@ -432,7 +457,7 @@
       flex: 1;
       padding: 6px 8px;
       border-radius: 999px;
-      border: 1px solid #2596be;
+      border: 1px solid var(--accent-color);
       background: #ffffff;
       color: #000000;
       font-size: 11px;
@@ -465,6 +490,7 @@
         <span class="label">Listino:</span>
         <span id="tier-label">ospite</span>
       </div>
+      <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
       <button class="btn secondary" id="btn-cart">Carrello (0)</button>
       <button class="btn secondary" id="btn-login">Login</button>
       <button class="btn" id="btn-register">Registrati</button>
@@ -512,6 +538,11 @@
     <button class="icon-btn" id="btn-up">
       <span>↑</span><span>Livello su</span>
     </button>
+  </div>
+
+  <div id="offer-nav-arrows">
+    <button class="icon-btn" id="btn-offer-prev">←</button>
+    <button class="icon-btn" id="btn-offer-next">→</button>
   </div>
 
   <!-- MODAL: REGISTRAZIONE -->
@@ -761,12 +792,221 @@
     </div>
   </div>
 
+  <!-- MODAL: ADMIN -->
+  <div class="backdrop" id="sheet-admin">
+    <div class="sheet">
+      <h2>Pannello Admin</h2>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button class="btn" id="admin-tab-clients">Clienti</button>
+        <button class="btn secondary" id="admin-tab-offers">Macro Offerte</button>
+        <button class="btn secondary" id="admin-tab-import">Import Listino</button>
+      </div>
+      <div id="admin-section-clients">
+        <h3 style="margin:4px 0;">Gestione clienti</h3>
+        <div class="two-cols">
+          <div class="field">
+            <label>Nome / Ragione sociale</label>
+            <input id="client-name" />
+          </div>
+          <div class="field">
+            <label>P.IVA</label>
+            <input id="client-piva" />
+          </div>
+        </div>
+        <div class="two-cols">
+          <div class="field">
+            <label>Email</label>
+            <input id="client-email" type="email" />
+          </div>
+          <div class="field">
+            <label>Telefono</label>
+            <input id="client-phone" />
+          </div>
+        </div>
+        <div class="two-cols">
+          <div class="field">
+            <label>Listino</label>
+            <select id="client-listino">
+              <option value="distributore">distributore</option>
+              <option value="rivenditore">rivenditore</option>
+              <option value="rivenditore10">rivenditore10</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Stato</label>
+            <select id="client-stato">
+              <option value="attivo">attivo</option>
+              <option value="sospeso">sospeso</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Note</label>
+          <textarea id="client-note"></textarea>
+        </div>
+        <div class="sheet-actions">
+          <button class="btn secondary" id="btn-client-reset">Nuovo</button>
+          <button class="btn" id="btn-client-save">Salva</button>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>Filtra per listino</label>
+          <select id="client-filter">
+            <option value="all">Tutti</option>
+            <option value="distributore">distributore</option>
+            <option value="rivenditore">rivenditore</option>
+            <option value="rivenditore10">rivenditore10</option>
+          </select>
+        </div>
+        <div class="html-preview" style="max-height:200px;">
+          <table style="width:100%; font-size:11px; border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:2px 4px;">Nome</th>
+                <th style="text-align:left; padding:2px 4px;">P.IVA</th>
+                <th style="text-align:left; padding:2px 4px;">Email</th>
+                <th style="text-align:left; padding:2px 4px;">Listino</th>
+                <th style="text-align:right; padding:2px 4px;">Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="clients-table"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="admin-section-offers" style="display:none;">
+        <h3 style="margin:4px 0;">Macro Offerte</h3>
+        <div class="field">
+          <label>Offerta corrente</label>
+          <select id="discount-offer-select"></select>
+        </div>
+        <div class="field">
+          <label>Segmento</label>
+          <select id="discount-segment">
+            <option value="distributore">distributore</option>
+            <option value="rivenditore">rivenditore</option>
+            <option value="rivenditore10">rivenditore10</option>
+          </select>
+        </div>
+        <div class="two-cols">
+          <div class="field">
+            <label>Min importo</label>
+            <input id="discount-min" type="number" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Max importo</label>
+            <input id="discount-max" type="number" step="0.01" />
+          </div>
+        </div>
+        <div class="two-cols">
+          <div class="field">
+            <label>% Sconto</label>
+            <input id="discount-percent" type="number" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Validità fino a</label>
+            <input id="discount-valid" type="date" />
+          </div>
+        </div>
+        <div class="sheet-actions">
+          <button class="btn secondary" id="btn-discount-remove">Rimuovi fascia</button>
+          <button class="btn" id="btn-discount-add">Aggiungi / Aggiorna fascia</button>
+        </div>
+        <div class="html-preview" style="max-height:200px;" id="discount-rules-preview"></div>
+      </div>
+      <div id="admin-section-import" style="display:none;">
+        <h3 style="margin:4px 0;">Import Listino .XLS</h3>
+        <div class="field">
+          <label>Carica file .xls (Office 97)</label>
+          <input id="price-list-file" type="file" accept=".xls" />
+          <small>Campi richiesti: nome/descrizione articolo, prezzo_distributore, prezzo_rivenditore, prezzo_rivenditore10, quantità_stock, status.</small>
+        </div>
+        <div class="sheet-actions">
+          <button class="btn" id="btn-price-list-upload">Carica listino</button>
+        </div>
+        <div class="html-preview" id="price-list-preview"></div>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-admin-close">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 </div>
 
 <script>
   const BASE_URL = ""; // stesso host/porta per API ecom
   const LLM_URL = "http://127.0.0.1:8081/completion";
+
+  const SYSTEM_TEXTURES = {
+    ormanet: "assets/textures/1.png",
+  };
+
+  const CATEGORY_TEXTURES = {
+    "batterie": "assets/textures/2.png",
+    "cancelleria": "assets/textures/3.png",
+    "carta-stampa": "assets/textures/4.png",
+    "consumabili-originali": "assets/textures/5.png",
+    "elettronica": "assets/textures/6.png",
+    "eliminacode": "assets/textures/7.png",
+    "rotoli-termici": "assets/textures/8.png",
+    "stampanti": "assets/textures/9.png",
+    "storage": "assets/textures/10.png",
+    "consumabili-reman": "assets/textures/11.png",
+  };
+
+  let priceList = [];
+  let clients = [];
+  const offersUniverse = [
+    {
+      id: "offerta-consumabili-originali",
+      name: "Sconti consumabili originali",
+      title: "Sconti consumabili originali",
+      texture: CATEGORY_TEXTURES["consumabili-originali"],
+      position: { x: 0, y: 1, z: -8 },
+      categories: [
+        {
+          id: "hp-original",
+          name: "HP Originali",
+          color: 0xff7b00,
+          tags: ["originali", "HP"],
+          subcategories: [
+            { id: "bundle-hp", name: "Bundle HP" }
+          ]
+        },
+        {
+          id: "brother-original",
+          name: "Brother Originali",
+          color: 0xff7b00,
+          tags: ["originali", "Brother"],
+          subcategories: [
+            { id: "bundle-brother", name: "Bundle Brother" }
+          ]
+        }
+      ]
+    }
+  ];
+  let discountConfigs = [
+    {
+      id: "offerta-consumabili-originali",
+      rules: {
+        distributore: [
+          { min: 100, max: 1000, discount: 1, valid_until: "2025-12-31" },
+          { min: 1000, max: 10000, discount: 2, valid_until: "2025-12-31" },
+          { min: 10000, max: Infinity, discount: 4, valid_until: "2025-12-31" },
+        ],
+        rivenditore: [
+          { min: 100, max: 200, discount: 2, valid_until: "2025-12-31" },
+          { min: 200, max: 1000, discount: 5, valid_until: "2025-12-31" },
+          { min: 1000, max: 5000, discount: 7, valid_until: "2025-12-31" },
+        ],
+        rivenditore10: [
+          { min: 50, max: 100, discount: 5, valid_until: "2025-12-31" },
+          { min: 100, max: 350, discount: 10, valid_until: "2025-12-31" },
+          { min: 350, max: Infinity, discount: 15, valid_until: "2025-12-31" },
+        ],
+      }
+    }
+  ];
 
   let currentUser = {
     logged: false,
@@ -784,6 +1024,7 @@
 
   let cart = [];
   let currentProductPrice = 0;
+  let currentOfferIndex = 0;
 
   const canvas = document.getElementById("universe-canvas");
   const tierLabel = document.getElementById("tier-label");
@@ -801,6 +1042,10 @@
   const entityQtyWrapper = document.getElementById("entity-qty-wrapper");
   const entityQtyInput = document.getElementById("entity-qty");
   const entityAdminActions = document.getElementById("entity-admin-actions");
+  const btnAdmin = document.getElementById("btn-admin");
+
+  const btnOfferPrev = document.getElementById("btn-offer-prev");
+  const btnOfferNext = document.getElementById("btn-offer-next");
 
   const sheetRegister = document.getElementById("sheet-register");
   const sheetLogin = document.getElementById("sheet-login");
@@ -811,6 +1056,7 @@
   const btnCartBack = document.getElementById("btn-cart-back");
 
   const sheetProduct = document.getElementById("sheet-product-editor");
+  const sheetAdmin = document.getElementById("sheet-admin");
   const skuInput = document.getElementById("prod-sku");
   const nameInput = document.getElementById("prod-name");
   const imageHdInput = document.getElementById("prod-image-hd");
@@ -832,6 +1078,35 @@
   const btnProdCancel = document.getElementById("btn-prod-cancel");
   const btnProdSave = document.getElementById("btn-prod-save");
   const btnEditProduct = document.getElementById("btn-edit-product");
+  const adminTabClients = document.getElementById("admin-tab-clients");
+  const adminTabOffers = document.getElementById("admin-tab-offers");
+  const adminTabImport = document.getElementById("admin-tab-import");
+  const adminSectionClients = document.getElementById("admin-section-clients");
+  const adminSectionOffers = document.getElementById("admin-section-offers");
+  const adminSectionImport = document.getElementById("admin-section-import");
+  const clientsTable = document.getElementById("clients-table");
+  const clientNameInput = document.getElementById("client-name");
+  const clientPivaInput = document.getElementById("client-piva");
+  const clientEmailInput = document.getElementById("client-email");
+  const clientPhoneInput = document.getElementById("client-phone");
+  const clientListinoInput = document.getElementById("client-listino");
+  const clientStatoInput = document.getElementById("client-stato");
+  const clientNoteInput = document.getElementById("client-note");
+  const clientFilterSelect = document.getElementById("client-filter");
+  const btnClientSave = document.getElementById("btn-client-save");
+  const btnClientReset = document.getElementById("btn-client-reset");
+  const discountOfferSelect = document.getElementById("discount-offer-select");
+  const discountSegmentSelect = document.getElementById("discount-segment");
+  const discountMinInput = document.getElementById("discount-min");
+  const discountMaxInput = document.getElementById("discount-max");
+  const discountPercentInput = document.getElementById("discount-percent");
+  const discountValidInput = document.getElementById("discount-valid");
+  const btnDiscountAdd = document.getElementById("btn-discount-add");
+  const btnDiscountRemove = document.getElementById("btn-discount-remove");
+  const discountPreview = document.getElementById("discount-rules-preview");
+  const priceListFileInput = document.getElementById("price-list-file");
+  const btnPriceListUpload = document.getElementById("btn-price-list-upload");
+  const priceListPreview = document.getElementById("price-list-preview");
 
   const btnBack = document.getElementById("btn-back");
   const btnOpenLlm = document.getElementById("btn-open-llm");
@@ -842,8 +1117,10 @@
   const llmInput = document.getElementById("llm-chat-input");
   const btnLlmSend = document.getElementById("btn-llm-send");
   const btnLlmClose = document.getElementById("btn-llm-close");
+  const btnAdminClose = document.getElementById("btn-admin-close");
 
   let editingProduct = null;
+  let editingClientId = null;
 
   const showSheet = (el) => { el.style.display = "flex"; };
   const hideSheet = (el) => { el.style.display = "none"; };
@@ -853,6 +1130,12 @@
   document.getElementById("btn-login").addEventListener("click", () => showSheet(sheetLogin));
   document.getElementById("btn-login-cancel").addEventListener("click", () => hideSheet(sheetLogin));
   btnCart.addEventListener("click", () => showSheet(sheetCart));
+  if (btnAdmin) {
+    btnAdmin.addEventListener("click", () => showSheet(sheetAdmin));
+  }
+  if (btnAdminClose) {
+    btnAdminClose.addEventListener("click", () => hideSheet(sheetAdmin));
+  }
   if (btnCartBack) {
     btnCartBack.addEventListener("click", () => {
       hideSheet(sheetCart);
@@ -861,12 +1144,204 @@
   document.getElementById("btn-cart-clear").addEventListener("click", () => { cart = []; updateCartUI(); });
   document.getElementById("btn-cart-checkout").addEventListener("click", checkoutCart);
   document.getElementById("btn-up").addEventListener("click", goUpOneLevel);
+  btnOfferPrev.addEventListener("click", () => navigateOffer(-1));
+  btnOfferNext.addEventListener("click", () => navigateOffer(1));
+
+  adminTabClients.addEventListener("click", () => switchAdminTab("clients"));
+  adminTabOffers.addEventListener("click", () => switchAdminTab("offers"));
+  adminTabImport.addEventListener("click", () => switchAdminTab("import"));
+
+  btnClientReset.addEventListener("click", () => fillClientForm());
+  btnClientSave.addEventListener("click", saveClient);
+  clientFilterSelect.addEventListener("change", renderClientsTable);
+
+  discountOfferSelect.addEventListener("change", renderDiscountPreview);
+  discountSegmentSelect.addEventListener("change", renderDiscountPreview);
+
+  btnDiscountAdd.addEventListener("click", addDiscountRule);
+  btnDiscountRemove.addEventListener("click", removeDiscountRule);
+  btnPriceListUpload.addEventListener("click", uploadPriceList);
 
   function showToast(msg, ok = true) {
     toast.textContent = msg;
     toast.style.background = ok ? "rgba(22,163,74,0.9)" : "rgba(185,28,28,0.9)";
     toast.style.display = "block";
     setTimeout(() => { toast.style.display = "none"; }, 2500);
+  }
+
+  function switchAdminTab(target) {
+    [adminSectionClients, adminSectionOffers, adminSectionImport].forEach((sec) => sec && (sec.style.display = "none"));
+    [adminTabClients, adminTabOffers, adminTabImport].forEach((btn) => btn && btn.classList.add("secondary"));
+    if (target === "clients") {
+      adminSectionClients.style.display = "block";
+      adminTabClients.classList.remove("secondary");
+    } else if (target === "offers") {
+      adminSectionOffers.style.display = "block";
+      adminTabOffers.classList.remove("secondary");
+    } else {
+      adminSectionImport.style.display = "block";
+      adminTabImport.classList.remove("secondary");
+    }
+  }
+
+  function renderClientsTable() {
+    if (!clientsTable) return;
+    clientsTable.innerHTML = "";
+    const filter = clientFilterSelect.value;
+    const filtered = clients.filter(c => filter === "all" || c.listino === filter);
+    filtered.forEach((c) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="padding:2px 4px;">${c.ragione_sociale || c.name || ""}</td>
+        <td style="padding:2px 4px;">${c.piva || ""}</td>
+        <td style="padding:2px 4px;">${c.email || ""}</td>
+        <td style="padding:2px 4px;">${c.listino || ""}</td>
+        <td style="padding:2px 4px; text-align:right;">
+          <button class="btn secondary" data-id="${c.id}" data-action="edit" style="font-size:10px;">Modifica</button>
+          <button class="btn secondary" data-id="${c.id}" data-action="delete" style="font-size:10px;">Elimina</button>
+        </td>`;
+      clientsTable.appendChild(tr);
+    });
+    clientsTable.querySelectorAll("button").forEach((btn) => {
+      const id = btn.getAttribute("data-id");
+      const action = btn.getAttribute("data-action");
+      btn.addEventListener("click", () => {
+        if (action === "edit") {
+          const client = clients.find((c) => c.id == id);
+          fillClientForm(client);
+        } else {
+          deleteClient(id);
+        }
+      });
+    });
+  }
+
+  function fillClientForm(client = null) {
+    editingClientId = client ? client.id : null;
+    clientNameInput.value = client?.ragione_sociale || client?.name || "";
+    clientPivaInput.value = client?.piva || "";
+    clientEmailInput.value = client?.email || "";
+    clientPhoneInput.value = client?.telefono || client?.phone || "";
+    clientListinoInput.value = client?.listino || "distributore";
+    clientStatoInput.value = client?.stato || "attivo";
+    clientNoteInput.value = client?.note || "";
+  }
+
+  async function saveClient() {
+    const client = {
+      id: editingClientId || Date.now(),
+      ragione_sociale: clientNameInput.value,
+      piva: clientPivaInput.value,
+      email: clientEmailInput.value,
+      telefono: clientPhoneInput.value,
+      listino: clientListinoInput.value,
+      stato: clientStatoInput.value,
+      note: clientNoteInput.value,
+    };
+    const existingIdx = clients.findIndex((c) => c.id === client.id);
+    if (existingIdx >= 0) clients[existingIdx] = client; else clients.push(client);
+    renderClientsTable();
+    try {
+      await fetch(BASE_URL + "/admin/clients/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(client),
+      });
+      showToast("Cliente salvato");
+    } catch (e) {
+      showToast("Cliente salvato in locale", false);
+    }
+    fillClientForm();
+  }
+
+  async function deleteClient(id) {
+    clients = clients.filter((c) => c.id != id);
+    renderClientsTable();
+    try {
+      await fetch(BASE_URL + "/admin/clients/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch (e) {
+      showToast("Cliente eliminato solo in locale", false);
+    }
+  }
+
+  function renderDiscountPreview() {
+    if (!discountPreview) return;
+    const offerId = discountOfferSelect.value;
+    const cfg = discountConfigs.find((c) => c.id === offerId);
+    if (!cfg) { discountPreview.textContent = ""; return; }
+    const rows = Object.entries(cfg.rules).map(([segment, rules]) => {
+      const rowsHtml = rules.map(r => `<li>${segment}: ${r.min} - ${r.max === Infinity ? "∞" : r.max} → ${r.discount}% fino al ${r.valid_until}</li>`).join("");
+      return `<ul style="margin:4px 0 6px; padding-left:16px;">${rowsHtml}</ul>`;
+    }).join("");
+    discountPreview.innerHTML = rows;
+  }
+
+  function ensureDiscountSelectFilled() {
+    if (!discountOfferSelect) return;
+    discountOfferSelect.innerHTML = offersUniverse.map(o => `<option value="${o.id}">${o.title || o.name}</option>`).join("");
+  }
+
+  async function addDiscountRule() {
+    const offerId = discountOfferSelect.value;
+    const segment = discountSegmentSelect.value;
+    const min = parseFloat(discountMinInput.value || "0");
+    const max = parseFloat(discountMaxInput.value || "0");
+    const percent = parseFloat(discountPercentInput.value || "0");
+    const valid = discountValidInput.value || "";
+    let cfg = discountConfigs.find((c) => c.id === offerId);
+    if (!cfg) {
+      cfg = { id: offerId, rules: { distributore: [], rivenditore: [], rivenditore10: [] } };
+      discountConfigs.push(cfg);
+    }
+    const list = cfg.rules[segment] || [];
+    const existingIdx = list.findIndex((r) => r.min === min && r.max === max);
+    const rule = { min, max: isFinite(max) ? max : Infinity, discount: percent, valid_until: valid };
+    if (existingIdx >= 0) list[existingIdx] = rule; else list.push(rule);
+    cfg.rules[segment] = list;
+    renderDiscountPreview();
+    try {
+      await fetch(BASE_URL + "/admin/offers/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      });
+    } catch (e) {
+      showToast("Configurazione salvata localmente", false);
+    }
+  }
+
+  function removeDiscountRule() {
+    const offerId = discountOfferSelect.value;
+    const segment = discountSegmentSelect.value;
+    let cfg = discountConfigs.find((c) => c.id === offerId);
+    if (!cfg) return;
+    cfg.rules[segment] = [];
+    renderDiscountPreview();
+  }
+
+  async function uploadPriceList() {
+    const file = priceListFileInput.files[0];
+    if (!file) {
+      showToast("Seleziona un file .xls", false);
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch(BASE_URL + "/admin/price_list/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      priceList = json.products || [];
+      priceListPreview.textContent = `Prodotti caricati: ${priceList.length}`;
+    } catch (e) {
+      priceListPreview.textContent = "Listino caricato localmente";
+    }
   }
 
   function renderStars(rating) {
@@ -1053,9 +1528,15 @@
     if (currentUser.logged) {
       document.getElementById("btn-login").textContent = "Account";
       document.getElementById("btn-register").style.display = "none";
+      if (currentUser.name === "GOD ADMIN" && btnAdmin) {
+        btnAdmin.style.display = "inline-flex";
+      } else if (btnAdmin) {
+        btnAdmin.style.display = "none";
+      }
     } else {
       document.getElementById("btn-login").textContent = "Login";
       document.getElementById("btn-register").style.display = "inline-flex";
+      if (btnAdmin) btnAdmin.style.display = "none";
     }
   }
 
@@ -1212,84 +1693,53 @@
   // === UNIVERSE DATA MODEL (FAKE PER ORA) ===
   const universe = {
     name: "TheLight24 Galaxy",
-    systems: [
-      {
-        id: "ormanet",
-        name: "Ormanet System",
-        type: "ecommerce",
-        rating: 4.8,
-        reviews: 137,
-        tags: ["B2B consumabili", "Spedizioni rapide", "Supporto dedicato"],
-        position: { x: -4, y: 2, z: -8 },
-        categories: [
-          {
-            id: "carta-stampa",
-            name: "Carta & Stampa",
-            color: 0xf97316,
-            tags: ["Carta", "Laser", "Inkjet"],
-            subcategories: [
-              {
-                id: "carta-a4",
-                name: "Carta A4",
-                products: [
-                  { sku: "CARTA-A4-80", name: "Carta A4 80gr", tags: ["risma", "ufficio"], rating: 4.6, reviews: 42 },
-                  { sku: "CARTA-A4-90", name: "Carta A4 90gr premium", tags: ["premium", "laser"], rating: 4.9, reviews: 19 }
-                ]
-              }
-            ]
-          },
-          {
-            id: "toner-ink",
-            name: "Toner & Inkjet",
-            color: 0x22c55e,
-            tags: ["Toner", "Inkjet"],
-            subcategories: [
-              {
-                id: "hp-original",
-                name: "HP Originali",
-                products: [
-                  { sku: "CF226X", name: "HP CF226X Nero", tags: ["toner", "hp", "alta resa"], rating: 4.7, reviews: 33 },
-                  { sku: "W1106A", name: "HP W1106A Nero", tags: ["laserjet"], rating: 4.5, reviews: 21 }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: "vitazenith",
-        name: "VitaZenith Wellness",
-        type: "ecommerce",
-        rating: 4.6,
-        reviews: 64,
-        tags: ["Cura naturale", "Made in Italy"],
-        position: { x: 5, y: -1, z: -10 },
-        categories: [
-          {
-            id: "cura-corpo",
-            name: "Cura del corpo",
-            color: 0x6366f1,
-            tags: ["Bio", "Benessere"],
-            subcategories: [
-              {
-                id: "shampoo-naturale",
-                name: "Shampoo naturali",
-                products: [
-                  { sku: "SHAMP-ARGAN", name: "Shampoo Argan Bio", tags: ["bio", "capelli"], rating: 4.8, reviews: 18 }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]
+    systems: offersUniverse,
   };
 
   // === THREE.JS SCENE ===
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x2596be);
+  scene.background = new THREE.Color(0xff7b00);
 
   const textureLoader = new THREE.TextureLoader();
+
+  const floatingTags = [];
+
+  function loadTextureSafe(path) {
+    if (!path) return null;
+    try {
+      return textureLoader.load(path, undefined, undefined, () => {});
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearFloatingTags() {
+    while (floatingTags.length) {
+      const item = floatingTags.pop();
+      if (item && item.tag && item.tag.parentNode) item.tag.parentNode.removeChild(item.tag);
+    }
+  }
+
+  function attachFloatingTag(obj3d, text) {
+    const tagEl = document.createElement("div");
+    tagEl.className = "floating-tag";
+    tagEl.textContent = text;
+    document.body.appendChild(tagEl);
+    floatingTags.push({ obj3d, tag: tagEl, text });
+    return tagEl;
+  }
+
+  function updateFloatingTags() {
+    floatingTags.forEach(({ obj3d, tag, text }) => {
+      if (!obj3d || !tag) return;
+      const vector = obj3d.position.clone().project(camera);
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+      tag.style.left = `${x}px`;
+      tag.style.top = `${y - 40}px`;
+      tag.textContent = text;
+    });
+  }
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -1335,21 +1785,14 @@
   }
 
   function addSystems() {
-    universe.systems.forEach((sys, idx) => {
+    const systemsToRender = universe.systems.length
+      ? [universe.systems[currentOfferIndex % universe.systems.length]]
+      : [];
+    systemsToRender.forEach((sys, idx) => {
       const size = 1.4;
       const geo = new THREE.BoxGeometry(size, size, size);
 
-      let map = null;
-      try {
-        map = textureLoader.load(
-          `assets/textures/systems/${sys.id}.png`,
-          undefined,
-          undefined,
-          () => {}
-        );
-      } catch (e) {
-        map = null;
-      }
+      const map = loadTextureSafe(SYSTEM_TEXTURES[sys.id]);
 
       const mat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -1360,6 +1803,7 @@
       const box = new THREE.Mesh(geo, mat);
       box.position.set(sys.position.x, sys.position.y + 0.5, sys.position.z);
       scene.add(box);
+      attachFloatingTag(box, sys.name);
 
       objects.push({ type: "system", ref: sys, mesh: box });
     });
@@ -1373,17 +1817,7 @@
     targetRotY = 0;
 
     const centerGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
-    let centerMap = null;
-    try {
-      centerMap = textureLoader.load(
-        `assets/textures/systems/${system.id}_center.png`,
-        undefined,
-        undefined,
-        () => {}
-      );
-    } catch (e) {
-      centerMap = null;
-    }
+    const centerMap = loadTextureSafe(SYSTEM_TEXTURES[system.id]);
     const centerMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       map: centerMap,
@@ -1394,6 +1828,7 @@
     center.position.set(0, 1, 0);
     scene.add(center);
     objects.push({ type: "system-center", ref: system, mesh: center });
+    attachFloatingTag(center, system.name);
 
     const radiusBase = 3.2;
     const catGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
@@ -1401,17 +1836,7 @@
     system.categories.forEach((cat, idx) => {
       const orbitRadius = radiusBase + idx * 1.3;
 
-      let catMap = null;
-      try {
-        catMap = textureLoader.load(
-          `assets/textures/categories/${cat.id}.png`,
-          undefined,
-          undefined,
-          () => {}
-        );
-      } catch (e) {
-        catMap = null;
-      }
+      const catMap = loadTextureSafe(CATEGORY_TEXTURES[cat.id]);
 
       const catMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -1430,21 +1855,12 @@
       scene.add(box);
 
       objects.push({ type: "category", ref: cat, mesh: box, orbitRadius, angle });
+      attachFloatingTag(box, cat.name);
 
       // Satelliti per sottocategorie
       const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       cat.subcategories?.forEach((sub, jdx) => {
-        let subMap = null;
-        try {
-          subMap = textureLoader.load(
-            `assets/textures/categories/${sub.id}.png`,
-            undefined,
-            undefined,
-            () => {}
-          );
-        } catch (e) {
-          subMap = null;
-        }
+      const subMap = loadTextureSafe(CATEGORY_TEXTURES[sub.id]);
 
         const satMat = new THREE.MeshStandardMaterial({
           color: 0xffffff,
@@ -1475,17 +1891,7 @@
     targetRotY = 0;
 
     const planetGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
-    let planetMap = null;
-    try {
-      planetMap = textureLoader.load(
-        `assets/textures/categories/${category.id}_planet.png`,
-        undefined,
-        undefined,
-        () => {}
-      );
-    } catch (e) {
-      planetMap = null;
-    }
+    const planetMap = loadTextureSafe(CATEGORY_TEXTURES[category.id]);
     const planetMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       map: planetMap,
@@ -1541,6 +1947,7 @@
     scene.children.slice().forEach(obj => {
       if (!keep.includes(obj)) scene.remove(obj);
     });
+    clearFloatingTags();
   }
 
   addGalaxy();
@@ -1769,6 +2176,12 @@
     }
   }
 
+  function navigateOffer(delta) {
+    if (!universe.systems.length) return;
+    currentOfferIndex = (currentOfferIndex + delta + universe.systems.length) % universe.systems.length;
+    resetToGalaxy();
+  }
+
   // Mouse handlers
   canvas.addEventListener("mousedown", (e) => {
     isDragging = true;
@@ -1847,6 +2260,8 @@
 
     scene.rotation.y += (targetRotY - scene.rotation.y) * 0.08;
     scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08;
+
+    updateFloatingTags();
 
     renderer.render(scene, camera);
   }
@@ -1944,6 +2359,11 @@
   };
 
   updateUserUI();
+  ensureDiscountSelectFilled();
+  renderDiscountPreview();
+  renderClientsTable();
+  fillClientForm();
+  switchAdminTab("clients");
   updateLabels();
 </script>
 </body>
