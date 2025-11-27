@@ -4,13 +4,17 @@ from pathlib import Path
 
 from aiohttp import ClientSession, ClientTimeout, web
 
+from core.config import settings
+
 # ================== CONFIG BASE ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UI_INDEX = BASE_DIR / "gui" / "index.html"
 
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
-LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8081/completion")
+#   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
+#   - altrimenti usiamo THELIGHT_LLM_BASE_URL / completions di default
+LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL")
 
 
 # ================== FALLBACK UTILS ==================
@@ -128,29 +132,78 @@ async def llm_chat(request: web.Request) -> web.Response:
     """
     Endpoint usato dalla GUI:
     LLM_URL = '/api/llm/chat'
-    Proxi verso il backend 127.0.0.1:8081/completion
+    Proxy verso il backend LLM locale/remoto configurato
     """
     payload = await request.json()
-    try:
-        async with ClientSession(timeout=ClientTimeout(total=120.0)) as session:
-            async with session.post(LLM_BACKEND_URL, json=payload) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-    except Exception as exc:  # noqa: BLE001 (surface errore al client)
-        return web.json_response(
-            {"error": "LLM backend non raggiungibile", "detail": str(exc)}, status=502
-        )
+    prompt = payload.get("prompt", "")
+    n_predict = int(payload.get("n_predict", 256))
+    temperature = float(payload.get("temperature", 0.7))
+    top_k = payload.get("top_k")
+    top_p = payload.get("top_p")
 
-    content = ""
-    if isinstance(data, dict):
-        if isinstance(data.get("content"), list):
-            content = "".join(chunk.get("text", "") for chunk in data["content"])
-        elif isinstance(data.get("content"), str):
-            content = data["content"]
-        elif "completion" in data:
-            content = str(data.get("completion", ""))
+    # Lista di endpoint da provare: preferisci env var, poi base configurazione
+    base_url = (LLM_BACKEND_URL or settings.LLM_BASE_URL).rstrip("/")
+    candidate_urls = []
+    if base_url.endswith("/completion") or base_url.endswith("/v1/completions"):
+        candidate_urls.append(base_url)
+    else:
+        candidate_urls.append(f"{base_url}/completion")
+        candidate_urls.append(f"{base_url}/v1/completions")
 
-    return web.json_response({"content": content, "raw": data})
+    last_error: Exception | None = None
+    async with ClientSession(timeout=ClientTimeout(total=120.0)) as session:
+        for url in candidate_urls:
+            try:
+                if url.endswith("/completion"):
+                    req_payload = {
+                        "prompt": prompt,
+                        "n_predict": n_predict,
+                        "temperature": temperature,
+                    }
+                    if top_k is not None:
+                        req_payload["top_k"] = top_k
+                    if top_p is not None:
+                        req_payload["top_p"] = top_p
+                else:  # /v1/completions
+                    req_payload = {
+                        "model": settings.LLM_MODEL,
+                        "prompt": prompt,
+                        "max_tokens": n_predict,
+                        "temperature": temperature,
+                    }
+
+                async with session.post(url, json=req_payload) as resp:
+                    resp.raise_for_status()
+                    data = await resp.json()
+
+                content = ""
+                if isinstance(data, dict):
+                    if isinstance(data.get("content"), list):
+                        content = "".join(chunk.get("text", "") for chunk in data["content"])
+                    elif isinstance(data.get("content"), str):
+                        content = data["content"]
+                    elif "completion" in data:
+                        content = str(data.get("completion", ""))
+                    elif (
+                        isinstance(data.get("choices"), list)
+                        and data["choices"]
+                        and isinstance(data["choices"][0], dict)
+                    ):
+                        choice = data["choices"][0]
+                        if isinstance(choice.get("text"), str):
+                            content = choice["text"]
+                        elif isinstance(choice.get("message", {}).get("content"), str):
+                            content = choice["message"]["content"]
+
+                return web.json_response({"content": content, "raw": data})
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                continue
+
+    detail = str(last_error) if last_error else "unknown"
+    return web.json_response(
+        {"error": "LLM backend non raggiungibile", "detail": detail}, status=502
+    )
 
 
 # ================== APP FACTORY ==================
