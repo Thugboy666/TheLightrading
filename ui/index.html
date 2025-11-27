@@ -483,6 +483,41 @@
   color: #9ca3af;
   font-size: 10px;
 }
+
+#chat-status-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  border: 1px solid rgba(148,163,184,0.4);
+  background: rgba(15,23,42,0.85);
+  color: #e5e7eb;
+}
+
+.status-idle {
+  border-color: rgba(148,163,184,0.4);
+  background: rgba(148,163,184,0.15);
+}
+
+.status-pending {
+  border-color: rgba(234,179,8,0.5);
+  background: rgba(234,179,8,0.15);
+  color: #facc15;
+}
+
+.status-sent {
+  border-color: rgba(34,197,94,0.5);
+  background: rgba(34,197,94,0.15);
+  color: #4ade80;
+}
   </style>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
@@ -674,14 +709,18 @@
     </div>
   </div>
 
-<!-- MODAL: CHAT LLM -->
+  <!-- MODAL: CHAT LLM -->
   <div class="backdrop" id="sheet-chat-ai">
     <div class="sheet">
       <h2>Chat AI locale</h2>
-      <p>Assistente LLM eseguito in locale su Termux (porta 8081).</p>
+      <p>Assistente locale per domande in linguaggio naturale.</p>
 
       <div id="chat-log" class="chat-log">
         <!-- messaggi -->
+      </div>
+
+      <div id="chat-status-row">
+        <span id="chat-status" class="status-badge status-idle">Non inviato</span>
       </div>
 
       <div class="field">
@@ -794,17 +833,11 @@
       </div>
     </div>
   </div>
-diff --git a/TheLight24/ui/index.html b/TheLight24/ui/index.html
-index 4195cf89207843a6778c12b65f4566f8c87c9b8a..9bb1a864eafc2f318ff3cbf780126944f7011690 100644
---- a/TheLight24/ui/index.html
-+++ b/TheLight24/ui/index.html
-@@ -786,52 +786,52 @@
- 
-   <!-- MODAL: LLM CHAT -->
+  <!-- MODAL: LLM CHAT -->
    <div class="backdrop" id="sheet-llm-chat">
      <div class="sheet">
        <h2>AI Assistant – TheLight24</h2>
-       <p>Chat locale con il modello Phi-3 Mini in esecuzione sul tuo dispositivo.</p>
+       <p>Chat locale con l’assistente AI in esecuzione sul dispositivo.</p>
  
        <div id="llm-chat-log"></div>
        <div id="llm-status"></div>
@@ -824,10 +857,8 @@ index 4195cf89207843a6778c12b65f4566f8c87c9b8a..9bb1a864eafc2f318ff3cbf780126944
  </div>
  
  <script>
--  const BASE_URL = ""; // stesso host/porta per backend ecom
--  const LLM_URL  = "/api/llm/chat"; // server Phi-3 su Termux
-+  const BASE_URL = window.location.origin || "http://127.0.0.1:8080"; // stesso host/porta per backend ecom
-+  const LLM_URL  = `${BASE_URL}/api/llm/chat`; // server Phi-3 su Termux
+    const BASE_URL = window.location.origin || "http://127.0.0.1:8080"; // stesso host/porta per backend ecom
+    const LLM_URL  = `${BASE_URL}/api/llm/chat`; // server Phi-3 su Termux
  
    let currentUser = {
      logged: false,
@@ -851,42 +882,91 @@ index 4195cf89207843a6778c12b65f4566f8c87c9b8a..9bb1a864eafc2f318ff3cbf780126944
    const zoomLevelLabel = document.getElementById("zoom-level");
    const locationPathLabel = document.getElementById("location-path");
    const toast = document.getElementById("toast");
+   const chatStatus = document.getElementById("chat-status");
  
-   const entityCard = document.getElementById("entity-card");
-@@ -1850,51 +1850,51 @@
-   async function sendChatMessage() {
-     if (!chatInput) return;
-     const text = chatInput.value.trim();
-     if (!text) return;
-     chatInput.value = "";
-     appendChatMessage("user", text);
- 
-     const payload = {
-       prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
-       n_predict: 256,
-       temperature: 0.7,
-       top_k: 40,
-       top_p: 0.9
-     };
- 
-     try {
-       const res = await fetch(LLM_URL, {
-         method: "POST",
-         headers: {"Content-Type": "application/json"},
-         body: JSON.stringify(payload)
-       });
-       const data = await res.json();
-       const reply = (data && data.content) ? data.content : JSON.stringify(data);
-       appendChatMessage("assistant", reply.trim());
-     } catch (e) {
--      appendChatMessage("system", "Errore nel contattare il modello su 127.0.0.1:8081");
-+      appendChatMessage("system", "Errore nel contattare il modello locale (controlla start_thelight.sh)");
+    const entityCard = document.getElementById("entity-card");
+    async function sendChatMessage() {
+      if (!chatInput) return;
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = "";
+      appendChatMessage("user", text);
+      setChatStatus("pending");
+
+      const payload = {
+        prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
+        n_predict: 256,
+        temperature: 0.7,
+        top_k: 40,
+        top_p: 0.9
+      };
+
+      try {
+        const res = await fetch(LLM_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        let reply = "";
+
+        // 1) Caso: content è stringa
+        if (data && typeof data.content === "string") {
+          reply = data.content;
+        }
+        // 2) Caso: content è array di pezzi (stile llama.cpp nuovo)
+        else if (data && Array.isArray(data.content)) {
+          reply = data.content
+            .map(p => (typeof p === "string" ? p : (p && p.content) || ""))
+            .join("");
+        }
+        // 3) Caso: stile "choices" (tipo OpenAI)
+        else if (data && Array.isArray(data.choices) && data.choices.length) {
+          const ch = data.choices[0];
+          if (typeof ch.text === "string") {
+            reply = ch.text;
+          } else if (ch.message && typeof ch.message.content === "string") {
+            reply = ch.message.content;
+          }
+        }
+        // 4) fallback: buttiamo giù il JSON intero
+        else {
+          reply = JSON.stringify(data, null, 2);
+        }
+
+        if (!reply) {
+          reply = "[Nessun testo ricevuto dal modello]";
+        }
+
+        appendChatMessage("assistant", String(reply).trim());
+        setChatStatus("sent");
+      } catch (e) {
+        appendChatMessage("system", "Errore nel contattare il servizio AI.");
+        setChatStatus("idle");
+      }
+    }
+
+   function setChatStatus(state) {
+     if (!chatStatus) return;
+     chatStatus.classList.remove("status-idle", "status-pending", "status-sent");
+     if (state === "pending") {
+       chatStatus.textContent = "Pending";
+       chatStatus.classList.add("status-pending");
+     } else if (state === "sent") {
+       chatStatus.textContent = "Inviato";
+       chatStatus.classList.add("status-sent");
+     } else {
+       chatStatus.textContent = "Non inviato";
+       chatStatus.classList.add("status-idle");
      }
    }
  
    if (btnChat) {
      btnChat.addEventListener("click", () => {
        showSheet(sheetChat);
+       setChatStatus("idle");
        if (chatInput) chatInput.focus();
      });
    }
