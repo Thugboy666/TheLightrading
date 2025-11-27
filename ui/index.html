@@ -425,11 +425,22 @@
     /* Controlli globali sopra tutto */
 #global-controls {
   position: absolute;
-  top: 8px;
+  top: 52px; /* sotto la top-bar per non sovrapporsi ai pulsanti auth */
   right: 8px;
   z-index: 80; /* sopra top-bar, nav, sheet normali */
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  #global-controls {
+    top: 56px;
+    right: 6px;
+    left: 6px;
+    justify-content: flex-end;
+  }
 }
 
 /* Chat log */
