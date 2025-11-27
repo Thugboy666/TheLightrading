@@ -2038,6 +2038,72 @@
 
   const objects = [];
 
+  function applyTextureToCube(cube, texturePath) {
+    if (!cube || !texturePath) return;
+
+    const texture = textureLoader.load(
+      texturePath,
+      undefined,
+      undefined,
+      (err) => {
+        console.error("Errore nel caricamento della texture:", texturePath, err);
+      }
+    );
+
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      color: 0xffffff,
+      metalness: 0.3,
+      roughness: 0.6,
+      transparent: true,
+      opacity: 1.0,
+    });
+
+    cube.material = material;
+  }
+
+  function getTexturePathForCategory(category) {
+    if (!category) return null;
+    if (category.texture) return category.texture;
+    return CATEGORY_TEXTURES[category.id] || null;
+  }
+
+  function updateCubeTextures() {
+    objects.forEach((object) => {
+      if (!object.mesh || object.mesh.type !== "Mesh") return;
+      if (object.type === "category" && object.ref?.discountActive) return;
+
+      let texturePath = null;
+      switch (object.type) {
+        case "category":
+          texturePath = getTexturePathForCategory(object.ref);
+          break;
+        case "subcategory":
+          texturePath = getTexturePathForCategory(object.ref);
+          break;
+        case "planet":
+          texturePath = getTexturePathForCategory(object.ref?.category);
+          break;
+        case "system":
+        case "system-center":
+          texturePath =
+            object.ref?.texture || SYSTEM_TEXTURES[object.ref?.id] || null;
+          break;
+        case "product":
+          texturePath = object.ref?.sku
+            ? `/assets/textures/products/${object.ref.sku}.png`
+            : null;
+          break;
+        default:
+          break;
+      }
+
+      if (texturePath) {
+        applyTextureToCube(object.mesh, texturePath);
+      }
+    });
+  }
+
   function addGalaxy() {
     const group = new THREE.Group();
     const starCount = 120;
@@ -2216,6 +2282,7 @@
       });
     });
     adjustObjectPosition();
+    updateCubeTextures();
   }
 
   function buildPlanetView(category, subcategory) {
@@ -2287,6 +2354,7 @@
       objects.push({ type: "product", ref: prod, mesh: satellite });
     });
     adjustObjectPosition();
+    updateCubeTextures();
   }
 
   function clearDynamicObjects() {
@@ -2310,6 +2378,7 @@
   addSystems();
   addSnowflakes();
   adjustObjectPosition();
+  updateCubeTextures();
 
   // CAMERA & CONTROLS
   let isDragging = false;
@@ -2331,6 +2400,7 @@
     clearDynamicObjects();
     addGalaxy();
     addSystems();
+    updateCubeTextures();
     camera.position.set(0, 3.5, 14);
     zoomLevel = "GALASSIA";
     currentPath = [];
