@@ -29,7 +29,7 @@
       position: absolute;
       inset: 0;
       touch-action: none;
-      z-index: 1;
+      z-index: 0;
     }
 
     /* Top bar */
@@ -43,7 +43,7 @@
       align-items: center;
       justify-content: space-between;
       background: rgba(255,255,255,0.9);
-      z-index: 20;
+      z-index: 50;
       gap: 6px;
     }
     #brand {
@@ -241,22 +241,12 @@
 
     /* Floating nav buttons */
     #nav-buttons {
-      position: absolute;
-      right: 8px;
-      bottom: 88px;
-      z-index: 16;
+      margin-top: 4px;
+      align-self: flex-end;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       gap: 6px;
-    }
-    #offer-nav-arrows {
-      position: absolute;
-      left: 50%;
-      bottom: 20px;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 8px;
-      z-index: 18;
+      position: static;
     }
     .icon-btn {
       border-radius: 999px;
@@ -531,18 +521,18 @@
         <button class="btn secondary" id="btn-edit-product" style="font-size:10px;padding-inline:8px;">Modifica scheda</button>
       </div>
     </div>
-  </div>
 
-  <!-- FLOATING NAV BUTTONS -->
-  <div id="nav-buttons">
-    <button class="icon-btn" id="btn-up">
-      <span>↑</span><span>Livello su</span>
-    </button>
-  </div>
-
-  <div id="offer-nav-arrows">
-    <button class="icon-btn" id="btn-offer-prev">←</button>
-    <button class="icon-btn" id="btn-offer-next">→</button>
+    <div id="nav-buttons">
+      <button class="icon-btn" id="btn-up">
+        <span>↑</span><span>Livello su</span>
+      </button>
+      <button class="icon-btn" id="btn-offer-prev">
+        <span>←</span><span>Indietro</span>
+      </button>
+      <button class="icon-btn" id="btn-offer-next">
+        <span>→</span><span>Avanti</span>
+      </button>
+    </div>
   </div>
 
   <!-- MODAL: REGISTRAZIONE -->
@@ -951,7 +941,7 @@
     "rotoli-termici": "assets/textures/8.png",
     "stampanti": "assets/textures/9.png",
     "storage": "assets/textures/10.png",
-    "consumabili-reman": "assets/textures/11.png",
+    "consumabili-remanufactured": "assets/textures/11.png",
   };
 
   let priceList = [];
@@ -1702,42 +1692,37 @@
 
   const textureLoader = new THREE.TextureLoader();
 
-  const floatingTags = [];
-
-  function loadTextureSafe(path) {
-    if (!path) return null;
-    try {
-      return textureLoader.load(path, undefined, undefined, () => {});
-    } catch (e) {
-      return null;
-    }
-  }
+  const floatingTags = new Map();
 
   function clearFloatingTags() {
-    while (floatingTags.length) {
-      const item = floatingTags.pop();
-      if (item && item.tag && item.tag.parentNode) item.tag.parentNode.removeChild(item.tag);
-    }
+    floatingTags.forEach((el) => el.remove());
+    floatingTags.clear();
   }
 
-  function attachFloatingTag(obj3d, text) {
-    const tagEl = document.createElement("div");
-    tagEl.className = "floating-tag";
-    tagEl.textContent = text;
-    document.body.appendChild(tagEl);
-    floatingTags.push({ obj3d, tag: tagEl, text });
-    return tagEl;
+  function createFloatingTagForObject(mesh, text) {
+    const el = document.createElement("div");
+    el.className = "floating-tag";
+    el.textContent = text;
+    document.body.appendChild(el);
+    floatingTags.set(mesh, el);
+    return el;
   }
 
   function updateFloatingTags() {
-    floatingTags.forEach(({ obj3d, tag, text }) => {
-      if (!obj3d || !tag) return;
-      const vector = obj3d.position.clone().project(camera);
-      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
-      tag.style.left = `${x}px`;
-      tag.style.top = `${y - 40}px`;
-      tag.textContent = text;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    floatingTags.forEach((el, mesh) => {
+      if (!mesh || !mesh.position) return;
+      const vector = new THREE.Vector3();
+      mesh.getWorldPosition(vector);
+      vector.project(camera);
+
+      const x = (vector.x * 0.5 + 0.5) * width;
+      const y = (-vector.y * 0.5 + 0.5) * height;
+
+      el.style.left = `${x}px`;
+      el.style.top = `${y - 30}px`;
     });
   }
 
@@ -1792,18 +1777,30 @@
       const size = 1.4;
       const geo = new THREE.BoxGeometry(size, size, size);
 
-      const map = loadTextureSafe(SYSTEM_TEXTURES[sys.id]);
+      const texPath = SYSTEM_TEXTURES[sys.id] || null;
+
+      let map = null;
+      if (texPath) {
+        map = textureLoader.load(
+          texPath,
+          undefined,
+          undefined,
+          (err) => {
+            console.error("Errore texture sistema", sys.id, texPath, err);
+          }
+        );
+      }
 
       const mat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        map,
-        metalness: 0.4,
-        roughness: 0.3
+        map: map || null,
+        metalness: 0.3,
+        roughness: 0.4
       });
       const box = new THREE.Mesh(geo, mat);
       box.position.set(sys.position.x, sys.position.y + 0.5, sys.position.z);
       scene.add(box);
-      attachFloatingTag(box, sys.name);
+      createFloatingTagForObject(box, sys.name);
 
       objects.push({ type: "system", ref: sys, mesh: box });
     });
@@ -1817,18 +1814,30 @@
     targetRotY = 0;
 
     const centerGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
-    const centerMap = loadTextureSafe(SYSTEM_TEXTURES[system.id]);
+    const centerTexPath = SYSTEM_TEXTURES[system.id] || null;
+
+    let centerMap = null;
+    if (centerTexPath) {
+      centerMap = textureLoader.load(
+        centerTexPath,
+        undefined,
+        undefined,
+        (err) => {
+          console.error("Errore texture sistema", system.id, centerTexPath, err);
+        }
+      );
+    }
     const centerMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      map: centerMap,
-      metalness: 0.4,
-      roughness: 0.3
+      map: centerMap || null,
+      metalness: 0.3,
+      roughness: 0.4
     });
     const center = new THREE.Mesh(centerGeo, centerMat);
     center.position.set(0, 1, 0);
     scene.add(center);
     objects.push({ type: "system-center", ref: system, mesh: center });
-    attachFloatingTag(center, system.name);
+    createFloatingTagForObject(center, system.name);
 
     const radiusBase = 3.2;
     const catGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
@@ -1836,11 +1845,23 @@
     system.categories.forEach((cat, idx) => {
       const orbitRadius = radiusBase + idx * 1.3;
 
-      const catMap = loadTextureSafe(CATEGORY_TEXTURES[cat.id]);
+      const catTexPath = CATEGORY_TEXTURES[cat.id] || null;
+
+      let catMap = null;
+      if (catTexPath) {
+        catMap = textureLoader.load(
+          catTexPath,
+          undefined,
+          undefined,
+          (err) => {
+            console.error("Errore texture categoria", cat.id, catTexPath, err);
+          }
+        );
+      }
 
       const catMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        map: catMap,
+        map: catMap || null,
         metalness: 0.3,
         roughness: 0.4
       });
@@ -1855,16 +1876,28 @@
       scene.add(box);
 
       objects.push({ type: "category", ref: cat, mesh: box, orbitRadius, angle });
-      attachFloatingTag(box, cat.name);
+      createFloatingTagForObject(box, cat.name);
 
       // Satelliti per sottocategorie
       const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       cat.subcategories?.forEach((sub, jdx) => {
-      const subMap = loadTextureSafe(CATEGORY_TEXTURES[sub.id]);
+        const subTexPath = CATEGORY_TEXTURES[sub.id] || null;
+
+        let subMap = null;
+        if (subTexPath) {
+          subMap = textureLoader.load(
+            subTexPath,
+            undefined,
+            undefined,
+            (err) => {
+              console.error("Errore texture sottocategoria", sub.id, subTexPath, err);
+            }
+          );
+        }
 
         const satMat = new THREE.MeshStandardMaterial({
           color: 0xffffff,
-          map: subMap,
+          map: subMap || null,
           metalness: 0.3,
           roughness: 0.5
         });
@@ -1891,12 +1924,24 @@
     targetRotY = 0;
 
     const planetGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
-    const planetMap = loadTextureSafe(CATEGORY_TEXTURES[category.id]);
+    const planetTexPath = CATEGORY_TEXTURES[category.id] || null;
+
+    let planetMap = null;
+    if (planetTexPath) {
+      planetMap = textureLoader.load(
+        planetTexPath,
+        undefined,
+        undefined,
+        (err) => {
+          console.error("Errore texture categoria", category.id, planetTexPath, err);
+        }
+      );
+    }
     const planetMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      map: planetMap,
-      metalness: 0.4,
-      roughness: 0.3
+      map: planetMap || null,
+      metalness: 0.3,
+      roughness: 0.4
     });
     const planet = new THREE.Mesh(planetGeo, planetMat);
     planet.position.set(0, 1, 0);
@@ -1908,20 +1953,20 @@
 
     products.forEach((prod, idx) => {
       let prodMap = null;
-      try {
+      if (prod?.sku) {
         prodMap = textureLoader.load(
           `assets/textures/products/${prod.sku}.png`,
           undefined,
           undefined,
-          () => {}
+          (err) => {
+            console.error("Errore texture prodotto", prod.sku, err);
+          }
         );
-      } catch (e) {
-        prodMap = null;
       }
 
       const prodMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        map: prodMap,
+        map: prodMap || null,
         metalness: 0.3,
         roughness: 0.5
       });
@@ -2261,9 +2306,8 @@
     scene.rotation.y += (targetRotY - scene.rotation.y) * 0.08;
     scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08;
 
-    updateFloatingTags();
-
     renderer.render(scene, camera);
+    updateFloatingTags();
   }
   animate();
 
