@@ -882,8 +882,8 @@
    const zoomLevelLabel = document.getElementById("zoom-level");
    const locationPathLabel = document.getElementById("location-path");
    const toast = document.getElementById("toast");
-   const chatStatus = document.getElementById("chat-status");
- 
+    const chatStatus = document.getElementById("chat-status");
+
     const entityCard = document.getElementById("entity-card");
     async function sendChatMessage() {
       if (!chatInput) return;
@@ -891,7 +891,6 @@
       if (!text) return;
       chatInput.value = "";
       appendChatMessage("user", text);
-      setChatStatus("pending");
 
       const payload = {
         prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
@@ -910,41 +909,21 @@
 
         const data = await res.json();
 
+        // ci aspettiamo sempre { content: "..." } dal backend
         let reply = "";
-
-        // 1) Caso: content è stringa
         if (data && typeof data.content === "string") {
           reply = data.content;
-        }
-        // 2) Caso: content è array di pezzi (stile llama.cpp nuovo)
-        else if (data && Array.isArray(data.content)) {
-          reply = data.content
-            .map(p => (typeof p === "string" ? p : (p && p.content) || ""))
-            .join("");
-        }
-        // 3) Caso: stile "choices" (tipo OpenAI)
-        else if (data && Array.isArray(data.choices) && data.choices.length) {
-          const ch = data.choices[0];
-          if (typeof ch.text === "string") {
-            reply = ch.text;
-          } else if (ch.message && typeof ch.message.content === "string") {
-            reply = ch.message.content;
-          }
-        }
-        // 4) fallback: buttiamo giù il JSON intero
-        else {
+        } else {
           reply = JSON.stringify(data, null, 2);
         }
 
         if (!reply) {
-          reply = "[Nessun testo ricevuto dal modello]";
+          reply = "[Nessuna risposta dal modello]";
         }
 
         appendChatMessage("assistant", String(reply).trim());
-        setChatStatus("sent");
       } catch (e) {
-        appendChatMessage("system", "Errore nel contattare il servizio AI.");
-        setChatStatus("idle");
+        appendChatMessage("system", "Errore nel contattare il modello su 127.0.0.1:8081");
       }
     }
 

@@ -2,9 +2,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from aiohttp import ClientSession, ClientTimeout, web
-
-from core.config import settings
+import httpx
+from aiohttp import web
 
 # ================== CONFIG BASE ==================
 
@@ -14,7 +13,7 @@ UI_INDEX = BASE_DIR / "gui" / "index.html"
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
 #   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
 #   - altrimenti usiamo THELIGHT_LLM_BASE_URL / completions di default
-LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL")
+LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8081/completion")
 
 
 # ================== FALLBACK UTILS ==================
@@ -132,78 +131,63 @@ async def llm_chat(request: web.Request) -> web.Response:
     """
     Endpoint usato dalla GUI:
     LLM_URL = '/api/llm/chat'
-    Proxy verso il backend LLM locale/remoto configurato
+    Proxi verso il backend 127.0.0.1:8081/completion
+    Normalizziamo SEMPRE in: {"content": "..."}
     """
     payload = await request.json()
-    prompt = payload.get("prompt", "")
-    n_predict = int(payload.get("n_predict", 256))
-    temperature = float(payload.get("temperature", 0.7))
-    top_k = payload.get("top_k")
-    top_p = payload.get("top_p")
 
-    # Lista di endpoint da provare: preferisci env var, poi base configurazione
-    base_url = (LLM_BACKEND_URL or settings.LLM_BASE_URL).rstrip("/")
-    candidate_urls = []
-    if base_url.endswith("/completion") or base_url.endswith("/v1/completions"):
-        candidate_urls.append(base_url)
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            r = await client.post(LLM_BACKEND_URL, json=payload)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response(
+            {"error": f"impossibile contattare backend LLM: {e}"},
+            status=502,
+        )
+
+    # Proviamo a fare parse JSON, altrimenti teniamo il testo puro
+    text_body = r.text
+    try:
+        raw = r.json()
+    except Exception:  # noqa: BLE001
+        raw = None
+
+    content = ""
+
+    if isinstance(raw, dict):
+        # 1) Caso classico llama.cpp: {"content": "...."}
+        if isinstance(raw.get("content"), str):
+            content = raw["content"]
+        # 2) content come lista di pezzi
+        elif isinstance(raw.get("content"), list):
+            parts = []
+            for p in raw["content"]:
+                if isinstance(p, str):
+                    parts.append(p)
+                elif isinstance(p, dict) and isinstance(p.get("content"), str):
+                    parts.append(p["content"])
+            content = "".join(parts)
+        # 3) stile OpenAI-like con "choices"
+        elif isinstance(raw.get("choices"), list) and raw["choices"]:
+            ch = raw["choices"][0]
+            if isinstance(ch.get("text"), str):
+                content = ch["text"]
+            elif isinstance(ch.get("message"), dict) and isinstance(
+                ch["message"].get("content"), str
+            ):
+                content = ch["message"]["content"]
+        # Fallback: json intero
+        else:
+            content = text_body or str(raw)
     else:
-        candidate_urls.append(f"{base_url}/completion")
-        candidate_urls.append(f"{base_url}/v1/completions")
+        # Nessun JSON decente, usiamo il body testuale
+        content = text_body or "[risposta LLM vuota]"
 
-    last_error: Exception | None = None
-    async with ClientSession(timeout=ClientTimeout(total=120.0)) as session:
-        for url in candidate_urls:
-            try:
-                if url.endswith("/completion"):
-                    req_payload = {
-                        "prompt": prompt,
-                        "n_predict": n_predict,
-                        "temperature": temperature,
-                    }
-                    if top_k is not None:
-                        req_payload["top_k"] = top_k
-                    if top_p is not None:
-                        req_payload["top_p"] = top_p
-                else:  # /v1/completions
-                    req_payload = {
-                        "model": settings.LLM_MODEL,
-                        "prompt": prompt,
-                        "max_tokens": n_predict,
-                        "temperature": temperature,
-                    }
+    content = (content or "").strip()
+    if not content:
+        content = "[LLM non ha restituito testo utile]"
 
-                async with session.post(url, json=req_payload) as resp:
-                    resp.raise_for_status()
-                    data = await resp.json()
-
-                content = ""
-                if isinstance(data, dict):
-                    if isinstance(data.get("content"), list):
-                        content = "".join(chunk.get("text", "") for chunk in data["content"])
-                    elif isinstance(data.get("content"), str):
-                        content = data["content"]
-                    elif "completion" in data:
-                        content = str(data.get("completion", ""))
-                    elif (
-                        isinstance(data.get("choices"), list)
-                        and data["choices"]
-                        and isinstance(data["choices"][0], dict)
-                    ):
-                        choice = data["choices"][0]
-                        if isinstance(choice.get("text"), str):
-                            content = choice["text"]
-                        elif isinstance(choice.get("message", {}).get("content"), str):
-                            content = choice["message"]["content"]
-
-                return web.json_response({"content": content, "raw": data})
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                continue
-
-    detail = str(last_error) if last_error else "unknown"
-    return web.json_response(
-        {"error": "LLM backend non raggiungibile", "detail": detail}, status=502
-    )
+    return web.json_response({"content": content})
 
 
 # ================== APP FACTORY ==================
