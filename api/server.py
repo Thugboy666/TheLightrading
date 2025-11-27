@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from aiohttp import ClientSession, web
+from aiohttp import ClientSession, ClientTimeout, web
 
 # ================== CONFIG BASE ==================
 
@@ -132,7 +132,7 @@ async def llm_chat(request: web.Request) -> web.Response:
     """
     payload = await request.json()
     try:
-        async with ClientSession(timeout=web.ClientTimeout(total=120.0)) as session:
+        async with ClientSession(timeout=ClientTimeout(total=120.0)) as session:
             async with session.post(LLM_BACKEND_URL, json=payload) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
