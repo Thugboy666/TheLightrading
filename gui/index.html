@@ -765,1083 +765,126 @@
 </div>
 
 <script>
-  const DEFAULT_API = "http://127.0.0.1:8080";
-  const origin = window.location.origin;
-  const BASE_URL = origin && origin.startsWith("http") ? origin : DEFAULT_API; // backend ecom/API
-  const LLM_URL  = `${BASE_URL}/api/llm/chat`; // proxy verso il modello locale
+  // ================== CONFIG ==================
+  const BASE_URL = window.location.origin || "http://127.0.0.1:8080";
+  const LLM_URL  = `${BASE_URL}/api/llm/chat`;
 
+  // ================== STATO BASE ==================
   let currentUser = {
     logged: false,
-    tier: "ospite", // ospite | rivenditore10 | rivenditore | distributore
+    tier: "ospite",
     name: null,
   };
 
   let zoomLevel = "GALASSIA";
   let currentPath = [];
-  let currentSystem = null;
-  let currentCategory = null;
-  let currentSubcategory = null;
-  let currentEntity = null;     // sistema / categoria / prodotto corrente
-  let currentEntityType = null; // 'system' | 'category' | 'product'
-
+  let currentEntity = null;
+  let currentEntityType = null;
   let cart = [];
   let currentProductPrice = 0;
 
-  const canvas = document.getElementById("universe-canvas");
-  const tierLabel = document.getElementById("tier-label");
-  const zoomLevelLabel = document.getElementById("zoom-level");
-  const locationPathLabel = document.getElementById("location-path");
-  const toast = document.getElementById("toast");
+  // ================== DOM ELEMENTS ==================
+  const canvas              = document.getElementById("universe-canvas");
+  const tierLabel           = document.getElementById("tier-label");
+  const zoomLevelLabel      = document.getElementById("zoom-level");
+  const locationPathLabel   = document.getElementById("location-path");
+  const toast               = document.getElementById("toast");
+  const entityCard          = document.getElementById("entity-card");
 
-  const entityCard = document.getElementById("entity-card");
-  const entityTypeEl = document.getElementById("entity-type");
-  const entityTitleEl = document.getElementById("entity-title");
-  const entityMetaEl = document.getElementById("entity-meta");
-  const entityRatingEl = document.getElementById("entity-rating");
-  const entityPriceEl = document.getElementById("entity-price");
-  const entityTagsEl = document.getElementById("entity-tags");
-  const entityQtyWrapper = document.getElementById("entity-qty-wrapper");
-  const entityQtyInput = document.getElementById("entity-qty");
-  const entityAdminActions = document.getElementById("entity-admin-actions");
+  const sheetRegister       = document.getElementById("sheet-register");
+  const sheetLogin          = document.getElementById("sheet-login");
+  const sheetCart           = document.getElementById("sheet-cart");
+  const sheetProduct        = document.getElementById("sheet-product-editor");
+  const sheetChat           = document.getElementById("sheet-chat-ai");
 
-  const sheetRegister = document.getElementById("sheet-register");
-  const sheetLogin = document.getElementById("sheet-login");
-  const sheetCart = document.getElementById("sheet-cart");
-  const cartListEl = document.getElementById("cart-list");
-  const cartTotalEl = document.getElementById("cart-total");
-  const btnCart = document.getElementById("btn-cart");
+  const btnBack             = document.getElementById("btn-back");
+  const btnCart             = document.getElementById("btn-cart");
+  const btnLogin            = document.getElementById("btn-login");
+  const btnRegister         = document.getElementById("btn-register");
 
-  // === EDITOR PRODOTTO ===
-  const sheetProduct = document.getElementById("sheet-product-editor");
-  const skuInput = document.getElementById("prod-sku");
-  const nameInput = document.getElementById("prod-name");
-  const imageHdInput = document.getElementById("prod-image-hd");
-  const imageThumbInput = document.getElementById("prod-image-thumb");
-  const galleryInput = document.getElementById("prod-gallery");
-  const descHtmlInput = document.getElementById("prod-desc-html");
-  const descPreview = document.getElementById("prod-desc-preview");
+  const btnChat             = document.getElementById("btn-chat-ai");
+  const btnChatClose        = document.getElementById("btn-chat-close");
+  const btnChatSend         = document.getElementById("btn-chat-send");
+  const chatInput           = document.getElementById("chat-input");
+  const chatLog             = document.getElementById("chat-log");
+  const chatStatus          = document.getElementById("chat-status");
 
-  const basePriceInput = document.getElementById("prod-base-price");
-  const unitInput = document.getElementById("prod-unit");
-  const markupRiv10Input = document.getElementById("prod-markup-riv10");
-  const markupRivInput = document.getElementById("prod-markup-riv");
-  const markupDistInput = document.getElementById("prod-markup-dist");
+  // ================== UTILS UI ==================
+  function showSheet(el) {
+    if (!el) return;
+    el.style.display = "flex";
+  }
 
-  const priceRiv10Output = document.getElementById("prod-price-riv10");
-  const priceRivOutput = document.getElementById("prod-price-riv");
-  const priceDistOutput = document.getElementById("prod-price-dist");
+  function hideSheet(el) {
+    if (!el) return;
+    el.style.display = "none";
+  }
 
-  const btnProdCancel = document.getElementById("btn-prod-cancel");
-  const btnProdSave = document.getElementById("btn-prod-save");
-  const btnEditProduct = document.getElementById("btn-edit-product");
-
-  let editingProduct = null;
-
-  // === CHAT LLM ===
-  const sheetChat = document.getElementById("sheet-chat-ai");
-  const chatLog = document.getElementById("chat-log");
-  const chatInput = document.getElementById("chat-input");
-  const btnChatSend = document.getElementById("btn-chat-send");
-  const btnChatClose = document.getElementById("btn-chat-close");
-  const llmStatus = document.getElementById("llm-status");
-  const btnBack = document.getElementById("btn-back");
-  const btnChat = document.getElementById("btn-chat-ai");
-
-  const showSheet = (el) => { if (el) el.style.display = "flex"; };
-  const hideSheet = (el) => { if (el) el.style.display = "none"; };
-
-  setLlmStatus("In attesa di connessione al modello locale…", "idle");
-
-  document.getElementById("btn-register").addEventListener("click", () => showSheet(sheetRegister));
-  document.getElementById("btn-reg-cancel").addEventListener("click", () => hideSheet(sheetRegister));
-  document.getElementById("btn-login").addEventListener("click", () => showSheet(sheetLogin));
-  document.getElementById("btn-login-cancel").addEventListener("click", () => hideSheet(sheetLogin));
-  btnCart.addEventListener("click", () => showSheet(sheetCart));
-  document.getElementById("btn-cart-clear").addEventListener("click", () => { cart = []; updateCartUI(); });
-  document.getElementById("btn-cart-checkout").addEventListener("click", checkoutCart);
-  document.getElementById("btn-up").addEventListener("click", goUpOneLevel);
-
-  function showToast(msg, ok = true) {
-    toast.textContent = msg;
-    toast.style.background = ok ? "rgba(22,163,74,0.9)" : "rgba(185,28,28,0.9)";
+  function showToast(message, ms = 2000) {
+    if (!toast) return;
+    toast.textContent = message;
     toast.style.display = "block";
-    setTimeout(() => { toast.style.display = "none"; }, 2500);
+    setTimeout(() => {
+      toast.style.display = "none";
+    }, ms);
   }
 
-  function renderStars(rating) {
-    if (!rating) return "";
-    const full = Math.floor(rating);
-    const half = rating - full >= 0.25 && rating - full < 0.75 ? 1 : 0;
-    const empty = 5 - full - half;
-    return "★".repeat(full) + (half ? "☆" : "") + "✩".repeat(empty);
-  }
-
-  async function submitRegistration() {
-    const payload = {
-      type: document.getElementById("reg-type").value,
-      name: document.getElementById("reg-name").value,
-      piva: document.getElementById("reg-piva").value,
-      sdi: document.getElementById("reg-sdi").value,
-      regime: document.getElementById("reg-regime").value,
-      address: document.getElementById("reg-address").value,
-      email: document.getElementById("reg-email").value,
-      phone: document.getElementById("reg-phone").value,
-      source: document.getElementById("reg-source").value,
-      visura: document.getElementById("reg-visura").value,
-      payment_pref: document.getElementById("reg-payment").value,
-      accept_terms: document.getElementById("reg-terms").checked,
-    };
-
-    if (!payload.email || !payload.accept_terms) {
-      showToast("Compila email e accetta i termini.", false);
-      return;
+  function updateLabels() {
+    if (zoomLevelLabel) {
+      zoomLevelLabel.textContent = `Livello: ${zoomLevel}`;
     }
-
-    try {
-      const res = await fetch(BASE_URL + "/auth/register", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (json.status === "ok") {
-        currentUser.logged = true;
-        currentUser.name = payload.name || payload.email;
-        currentUser.tier = json.tier || "rivenditore10";
-        updateUserUI();
-        hideSheet(sheetRegister);
-        showToast("Registrazione inviata. Listino assegnato dopo verifica.");
-      } else {
-        showToast("Errore registrazione.", false);
-      }
-    } catch (e) {
-      showToast("Backend non raggiungibile.", false);
+    const pathStr = currentPath.length ? "/" + currentPath.join(" / ") : "/";
+    if (locationPathLabel) {
+      locationPathLabel.textContent = `Posizione: ${pathStr}`;
     }
-  }
-
-  async function submitLogin() {
-    const payload = {
-      email: document.getElementById("login-email").value,
-      password: document.getElementById("login-password").value,
-    };
-    if (!payload.email || !payload.password) {
-      showToast("Email e password obbligatorie.", false);
-      return;
-    }
-
-    // Login admin locale
-    const ADMIN_EMAIL = "god@local";
-    const ADMIN_PASS = "OrmaNet!2025$Light";
-    if (payload.email === ADMIN_EMAIL && payload.password === ADMIN_PASS) {
-      currentUser.logged = true;
-      currentUser.name = "GOD ADMIN";
-      currentUser.tier = "distributore";
-      updateUserUI();
-      hideSheet(sheetLogin);
-      showToast("Modalità admin attiva");
-      return;
-    }
-
-    try {
-      const res = await fetch(BASE_URL + "/auth/login", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (json.status === "ok") {
-        currentUser.logged = true;
-        currentUser.name = json.name || payload.email;
-        currentUser.tier = json.tier || "rivenditore10";
-        updateUserUI();
-        hideSheet(sheetLogin);
-        showToast("Bentornato, " + currentUser.name);
-      } else {
-        showToast("Credenziali errate.", false);
-      }
-    } catch (e) {
-      showToast("Backend non raggiungibile.", false);
-    }
-  }
-
-  document.getElementById("btn-reg-submit").addEventListener("click", submitRegistration);
-  document.getElementById("btn-login-submit").addEventListener("click", submitLogin);
-
-  document.getElementById("btn-add-cart").addEventListener("click", () => {
-    if (!currentUser.logged) {
-      showToast("Registrati o fai login per usare il carrello.", false);
-      return;
-    }
-    if (!currentEntity || currentEntityType !== "product") return;
-    const qty = Math.max(1, parseInt(entityQtyInput.value || "1", 10));
-    const existing = cart.find(i => i.sku === currentEntity.sku);
-    if (existing) {
-      existing.qty += qty;
-      if (currentProductPrice) existing.price = currentProductPrice;
-    } else {
-      cart.push({
-        sku: currentEntity.sku,
-        name: currentEntity.name,
-        qty,
-        price: currentProductPrice || 0
-      });
-    }
-    updateCartUI();
-    showToast("Articolo aggiunto al carrello");
-  });
-
-  function checkoutCart() {
-    if (!currentUser.logged) {
-      showToast("Fai login prima di inviare l’ordine.", false);
-      return;
-    }
-    if (!cart.length) {
-      showToast("Il carrello è vuoto.", false);
-      return;
-    }
-    fetch(BASE_URL + "/ecom/order_draft", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        user_tier: currentUser.tier,
-        user_name: currentUser.name,
-        items: cart
-      })
-    }).catch(() => {});
-    showToast("Richiesta ordine inviata.");
-  }
-
-  function updateCartUI() {
-    btnCart.textContent = `Carrello (${cart.reduce((s,i)=>s+i.qty,0)})`;
-    cartListEl.innerHTML = "";
-    let total = 0;
-    cart.forEach(item => {
-      const row = document.createElement("div");
-      row.className = "cart-row";
-      const main = document.createElement("div");
-      main.className = "cart-main";
-      const name = document.createElement("div");
-      name.textContent = item.name;
-      const sku = document.createElement("div");
-      sku.className = "cart-sku";
-      sku.textContent = item.sku;
-      const qty = document.createElement("div");
-      qty.className = "cart-qty";
-      qty.textContent = `Qtà: ${item.qty}`;
-      main.appendChild(name);
-      main.appendChild(sku);
-      main.appendChild(qty);
-
-      const price = document.createElement("div");
-      price.className = "cart-price";
-      if (item.price) {
-        price.textContent = (item.price * item.qty).toFixed(2) + " €";
-        total += item.price * item.qty;
-      } else {
-        price.textContent = "—";
-      }
-
-      row.appendChild(main);
-      row.appendChild(price);
-      cartListEl.appendChild(row);
-    });
-    cartTotalEl.textContent = "Totale: " + total.toFixed(2) + " €";
   }
 
   function updateUserUI() {
-    tierLabel.textContent = currentUser.tier;
-    if (currentUser.logged) {
-      document.getElementById("btn-login").textContent = "Account";
-      document.getElementById("btn-register").style.display = "none";
-    } else {
-      document.getElementById("btn-login").textContent = "Login";
-      document.getElementById("btn-register").style.display = "inline-flex";
+    if (tierLabel) {
+      tierLabel.textContent = currentUser.tier || "ospite";
     }
-  }
-
-  // === LOGICA EDITOR PRODOTTO INTEGRATA ===
-
-  function parseNumber(input) {
-    if (!input) return 0;
-    const v = parseFloat((input.value || "").replace(",", "."));
-    return isFinite(v) ? v : 0;
-  }
-
-  function formatPrice(v) {
-    if (!isFinite(v)) return "";
-    return v.toFixed(2) + " €";
-  }
-
-  function updatePreview() {
-    const html = descHtmlInput.value || "";
-    descPreview.innerHTML = html;
-  }
-
-  function recalcPrices() {
-    const base = parseNumber(basePriceInput);
-    const mRiv10 = parseNumber(markupRiv10Input);
-    const mRiv = parseNumber(markupRivInput);
-    const mDist = parseNumber(markupDistInput);
-
-    const pRiv10 = base * (1 + mRiv10 / 100);
-    const pRiv = base * (1 + mRiv / 100);
-    const pDist = base * (1 + mDist / 100);
-
-    priceRiv10Output.value = base ? formatPrice(pRiv10) : "";
-    priceRivOutput.value = base ? formatPrice(pRiv) : "";
-    priceDistOutput.value = base ? formatPrice(pDist) : "";
-  }
-
-  function openProductEditor() {
-    if (!currentUser || currentUser.name !== "GOD ADMIN") {
-      showToast("Solo GOD ADMIN può modificare le schede.", false);
-      return;
-    }
-    if (!currentEntity || currentEntityType !== "product") {
-      showToast("Seleziona un prodotto nella galassia.", false);
-      return;
-    }
-
-    const prod = currentEntity;
-    editingProduct = prod;
-
-    skuInput.value = prod.sku || "";
-    nameInput.value = prod.name || "";
-    imageHdInput.value = prod.image_hd || prod.image || "";
-    imageThumbInput.value = prod.image_thumb || "";
-    galleryInput.value = (prod.gallery || []).join("\n");
-    descHtmlInput.value = prod.description_html || "";
-    updatePreview();
-
-    const pricing = prod.pricing || {};
-    basePriceInput.value =
-      pricing.base_price != null ? pricing.base_price : "";
-    unitInput.value = pricing.unit || "";
-
-    markupRiv10Input.value =
-      pricing.markup_riv10 != null ? pricing.markup_riv10 : 10;
-    markupRivInput.value =
-      pricing.markup_riv != null ? pricing.markup_riv : 20;
-    markupDistInput.value =
-      pricing.markup_dist != null ? pricing.markup_dist : 0;
-
-    recalcPrices();
-    sheetProduct.style.display = "flex";
-  }
-
-  function closeProductEditor() {
-    sheetProduct.style.display = "none";
-    editingProduct = null;
-  }
-
-  async function saveProduct() {
-    if (!editingProduct) return;
-    if (!currentUser || currentUser.name !== "GOD ADMIN") {
-      showToast("Solo GOD ADMIN può salvare le modifiche.", false);
-      return;
-    }
-
-    const basePrice = parseNumber(basePriceInput);
-    const mRiv10 = parseNumber(markupRiv10Input);
-    const mRiv = parseNumber(markupRivInput);
-    const mDist = parseNumber(markupDistInput);
-
-    const pRiv10 = basePrice * (1 + mRiv10 / 100);
-    const pRiv = basePrice * (1 + mRiv / 100);
-    const pDist = basePrice * (1 + mDist / 100);
-
-    editingProduct.name = nameInput.value.trim() || editingProduct.name;
-    editingProduct.image_hd = imageHdInput.value.trim();
-    editingProduct.image_thumb = imageThumbInput.value.trim();
-    editingProduct.gallery = (galleryInput.value || "")
-      .split("\n")
-      .map((v) => v.trim())
-      .filter(Boolean);
-    editingProduct.description_html = descHtmlInput.value;
-
-    editingProduct.pricing = {
-      base_price: basePrice,
-      unit: unitInput.value.trim(),
-      markup_riv10: mRiv10,
-      markup_riv: mRiv,
-      markup_dist: mDist,
-      prices: {
-        rivenditore10: pRiv10,
-        rivenditore: pRiv,
-        distributore: pDist,
-      },
-    };
-
-    const payload = {
-      sku: editingProduct.sku,
-      name: editingProduct.name,
-      image_hd: editingProduct.image_hd,
-      image_thumb: editingProduct.image_thumb,
-      gallery: editingProduct.gallery,
-      description_html: editingProduct.description_html,
-      pricing: editingProduct.pricing,
-    };
-
-    try {
-      await fetch(BASE_URL + "/ecom/product/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      showToast("Scheda prodotto aggiornata.");
-    } catch (e) {
-      showToast("Scheda aggiornata in locale. Backend non raggiungibile.", false);
-    }
-
-    closeProductEditor();
-  }
-
-  if (btnEditProduct) {
-    btnEditProduct.addEventListener("click", openProductEditor);
-  }
-  if (btnProdCancel) {
-    btnProdCancel.addEventListener("click", closeProductEditor);
-  }
-  if (btnProdSave) {
-    btnProdSave.addEventListener("click", saveProduct);
-  }
-  descHtmlInput.addEventListener("input", updatePreview);
-  [basePriceInput, markupRiv10Input, markupRivInput, markupDistInput].forEach(
-    (el) => el && el.addEventListener("input", recalcPrices)
-  );
-
-  // === UNIVERSE DATA MODEL (FAKE PER ORA) ===
-  const universe = {
-    name: "TheLight24 Galaxy",
-    systems: [
-      {
-        id: "ormanet",
-        name: "Ormanet System",
-        type: "ecommerce",
-        rating: 4.8,
-        reviews: 137,
-        tags: ["B2B consumabili", "Spedizioni rapide", "Supporto dedicato"],
-        position: { x: -4, y: 2, z: -8 },
-        categories: [
-          {
-            id: "carta-stampa",
-            name: "Carta & Stampa",
-            color: 0xf97316,
-            tags: ["Carta", "Laser", "Inkjet"],
-            subcategories: [
-              {
-                id: "carta-a4",
-                name: "Carta A4",
-                products: [
-                  { sku: "CARTA-A4-80", name: "Carta A4 80gr", tags: ["risma", "ufficio"], rating: 4.6, reviews: 42 },
-                  { sku: "CARTA-A4-90", name: "Carta A4 90gr premium", tags: ["premium", "laser"], rating: 4.9, reviews: 19 }
-                ]
-              }
-            ]
-          },
-          {
-            id: "toner-ink",
-            name: "Toner & Inkjet",
-            color: 0x22c55e,
-            tags: ["Toner", "Inkjet"],
-            subcategories: [
-              {
-                id: "hp-original",
-                name: "HP Originali",
-                products: [
-                  { sku: "CF226X", name: "HP CF226X Nero", tags: ["toner", "hp", "alta resa"], rating: 4.7, reviews: 33 },
-                  { sku: "W1106A", name: "HP W1106A Nero", tags: ["laserjet"], rating: 4.5, reviews: 21 }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: "vitazenith",
-        name: "VitaZenith Wellness",
-        type: "ecommerce",
-        rating: 4.6,
-        reviews: 64,
-        tags: ["Cura naturale", "Made in Italy"],
-        position: { x: 5, y: -1, z: -10 },
-        categories: [
-          {
-            id: "cura-corpo",
-            name: "Cura del corpo",
-            color: 0x6366f1,
-            tags: ["Bio", "Benessere"],
-            subcategories: [
-              {
-                id: "shampoo-naturale",
-                name: "Shampoo naturali",
-                products: [
-                  { sku: "SHAMP-ARGAN", name: "Shampoo Argan Bio", tags: ["bio", "capelli"], rating: 4.8, reviews: 18 }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  };
-
-  // === THREE.JS SCENE ===
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x020617);
-
-  const camera = new THREE.PerspectiveCamera(
-    60,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100
-  );
-  camera.position.set(0, 2, 14);
-
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
-
-  const ambient = new THREE.AmbientLight(0x1e293b, 2.2);
-  scene.add(ambient);
-  const mainLight = new THREE.PointLight(0xffffff, 3, 120);
-  mainLight.position.set(5, 8, 12);
-  scene.add(mainLight);
-
-  const objects = []; // {type, ref, mesh}
-
-  function addGalaxy() {
-    const starGeo = new THREE.BufferGeometry();
-    const starCount = 650;
-    const positions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 60;
-      positions[i + 1] = (Math.random() - 0.5) * 60;
-      positions[i + 2] = (Math.random() - 0.5) * 60;
-    }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.09 });
-    const stars = new THREE.Points(starGeo, starMat);
-    scene.add(stars);
-  }
-
-  function addSystems() {
-    universe.systems.forEach((sys, idx) => {
-      const geo = new THREE.SphereGeometry(0.9, 32, 32);
-      const mat = new THREE.MeshStandardMaterial({
-        color: idx === 0 ? 0x0ea5e9 : 0x8b5cf6,
-        emissive: idx === 0 ? 0x38bdf8 : 0x6366f1,
-        emissiveIntensity: 0.8,
-        metalness: 0.6,
-        roughness: 0.25
-      });
-      const sphere = new THREE.Mesh(geo, mat);
-      sphere.position.set(sys.position.x, sys.position.y + 0.5, sys.position.z);
-      scene.add(sphere);
-
-      objects.push({ type: "system", ref: sys, mesh: sphere });
-    });
-  }
-
-  function buildSystemView(system) {
-    clearDynamicObjects();
-    objects.length = 0;
-    scene.rotation.set(0, 0, 0);
-    targetRotX = 0;
-    targetRotY = 0;
-
-    const center = new THREE.Mesh(
-      new THREE.SphereGeometry(1.1, 32, 32),
-      new THREE.MeshStandardMaterial({
-        color: 0xfacc15,
-        emissive: 0xfbbf24,
-        emissiveIntensity: 1.2,
-        metalness: 0.7,
-        roughness: 0.25
-      })
-    );
-    center.position.set(0, 1, 0);
-    scene.add(center);
-    objects.push({ type: "system-center", ref: system, mesh: center });
-
-    const radiusBase = 3.2;
-    system.categories.forEach((cat, idx) => {
-      const orbitRadius = radiusBase + idx * 1.3;
-
-      const planet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.5, 26, 26),
-        new THREE.MeshStandardMaterial({
-          color: cat.color || 0x22c55e,
-          emissive: cat.color || 0x22c55e,
-          emissiveIntensity: 0.35,
-          metalness: 0.5,
-          roughness: 0.4
-        })
-      );
-      const angle = (idx / system.categories.length) * Math.PI * 2;
-      planet.position.set(
-        orbitRadius * Math.cos(angle),
-        1,
-        orbitRadius * Math.sin(angle)
-      );
-      scene.add(planet);
-      objects.push({ type: "category", ref: cat, mesh: planet, orbitRadius, angle });
-
-      cat.subcategories?.forEach((sub, jdx) => {
-        const sat = new THREE.Mesh(
-          new THREE.SphereGeometry(0.18, 18, 18),
-          new THREE.MeshStandardMaterial({
-            color: 0x38bdf8,
-            emissive: 0x38bdf8,
-            emissiveIntensity: 0.5,
-            metalness: 0.4,
-            roughness: 0.6
-          })
-        );
-        const satAngle = angle + (jdx + 1) * 0.7;
-        const satRadius = orbitRadius * 1.18;
-        sat.position.set(
-          satRadius * Math.cos(satAngle),
-          1.2,
-          satRadius * Math.sin(satAngle)
-        );
-        scene.add(sat);
-        objects.push({ type: "subcategory", ref: sub, mesh: sat });
-      });
-    });
-  }
-
-  function buildPlanetView(category, subcategory) {
-    clearDynamicObjects();
-    objects.length = 0;
-    scene.rotation.set(0, 0, 0);
-    targetRotX = 0;
-    targetRotY = 0;
-
-    const planet = new THREE.Mesh(
-      new THREE.SphereGeometry(1.6, 36, 36),
-      new THREE.MeshStandardMaterial({
-        color: category.color || 0x22c55e,
-        emissive: category.color || 0x22c55e,
-        emissiveIntensity: 0.4,
-        metalness: 0.6,
-        roughness: 0.35
-      })
-    );
-    planet.position.set(0, 1, 0);
-    scene.add(planet);
-    objects.push({ type: "planet", ref: { category, subcategory }, mesh: planet });
-
-    const products = subcategory.products || [];
-    products.forEach((prod, idx) => {
-      const ringRadius = 2.4 + idx * 0.5;
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(ringRadius, 0.035, 8, 40),
-        new THREE.MeshBasicMaterial({ color: 0x93c5fd, wireframe: false })
-      );
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = 1;
-      scene.add(ring);
-
-      const satellite = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 18, 18),
-        new THREE.MeshStandardMaterial({
-          color: 0x38bdf8,
-          emissive: 0x38bdf8,
-          emissiveIntensity: 0.8,
-          metalness: 0.5,
-          roughness: 0.4
-        })
-      );
-      const angle = (idx / Math.max(products.length, 1)) * Math.PI * 2;
-      satellite.position.set(
-        ringRadius * Math.cos(angle),
-        1,
-        ringRadius * Math.sin(angle)
-      );
-      scene.add(satellite);
-      objects.push({ type: "product", ref: prod, mesh: satellite });
-    });
-  }
-
-  function clearDynamicObjects() {
-    const keep = [];
-    scene.children.forEach(obj => {
-      if (obj.type === "AmbientLight" || obj.type === "PointLight") keep.push(obj);
-    });
-    scene.children.slice().forEach(obj => {
-      if (!keep.includes(obj)) scene.remove(obj);
-    });
-  }
-
-  addGalaxy();
-  addSystems();
-
-  // CAMERA & CONTROLS
-  let isDragging = false;
-  let lastX = 0;
-  let lastY = 0;
-  let targetRotX = 0;
-  let targetRotY = 0;
-
-  // per distinguere tap vs drag su mobile
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let touchMoved = false;
-
-  function updateLabels() {
-    zoomLevelLabel.textContent = "Livello: " + zoomLevel;
-    locationPathLabel.textContent = "Posizione: /" + currentPath.join("/");
   }
 
   function resetToGalaxy() {
-    clearDynamicObjects();
-    addGalaxy();
-    addSystems();
-    camera.position.set(0, 2, 14);
     zoomLevel = "GALASSIA";
     currentPath = [];
-    currentSystem = null;
-    currentCategory = null;
-    currentSubcategory = null;
     currentEntity = null;
     currentEntityType = null;
-    entityCard.style.display = "none";
-    entityAdminActions.style.display = "none";
-    scene.rotation.set(0, 0, 0);
-    targetRotX = 0;
-    targetRotY = 0;
+    if (entityCard) entityCard.style.display = "none";
     updateLabels();
   }
 
-  function enterSystem(system) {
-    currentSystem = system;
-    zoomLevel = "SYSTEM";
-    currentPath = [system.name];
-    camera.position.set(0, 3, 11);
-    buildSystemView(system);
-    showSystemCard(system);
-    updateLabels();
-  }
-
-  function enterCategory(cat) {
-    if (!currentSystem) return;
-    zoomLevel = "SYSTEM";
-    currentCategory = cat;
-    currentPath = [currentSystem.name, cat.name];
-    showCategoryCard(currentSystem, cat);
-    updateLabels();
-  }
-
-  function enterPlanet(cat, sub) {
-    currentCategory = cat;
-    currentSubcategory = sub;
-    zoomLevel = "PLANET";
-    currentPath = [currentSystem.name, cat.name, sub.name];
-    camera.position.set(0, 3, 7.5);
-    buildPlanetView(cat, sub);
-    showCategoryCard(currentSystem, cat);
-    updateLabels();
-  }
-
-  function focusProduct(prod) {
-    currentEntity = prod;
-    currentEntityType = "product";
-    entityCard.style.display = "flex";
-    entityTypeEl.textContent = "PRODOTTO";
-    entityTitleEl.textContent = prod.name;
-    entityMetaEl.textContent =
-      "SKU: " + prod.sku + " • Listino: " + (currentUser.tier || "ospite");
-    if (!currentUser.logged) {
-      entityPriceEl.textContent = "Registrati per vedere il prezzo";
-    } else {
-      entityPriceEl.textContent = "Carico prezzo…";
-    }
-    entityRatingEl.textContent = prod.rating
-      ? `${renderStars(prod.rating)}  (${prod.rating.toFixed(1)}/5 • ${prod.reviews || 0} recensioni)`
-      : "";
-    entityTagsEl.innerHTML = "";
-    (prod.tags || []).forEach(t => {
-      const span = document.createElement("span");
-      span.className = "tag";
-      span.textContent = t;
-      entityTagsEl.appendChild(span);
-    });
-
-    if (currentUser.logged) {
-      entityQtyWrapper.style.display = "flex";
-      entityQtyInput.value = "1";
-    } else {
-      entityQtyWrapper.style.display = "none";
-    }
-
-    if (currentUser.name === "GOD ADMIN") {
-      entityAdminActions.style.display = "flex";
-    } else {
-      entityAdminActions.style.display = "none";
-    }
-
-    currentProductPrice = 0;
-    if (!currentUser.logged) return;
-
-    fetch(BASE_URL + "/ecom/pricing", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        sku: prod.sku,
-        base_price: 10,
-        customer_segment: currentUser.tier,
-        quantity: 1
-      })
-    })
-      .then(r => r.json())
-      .then(json => {
-        if (json && typeof json.price !== "undefined") {
-          currentProductPrice = Number(json.price);
-          entityPriceEl.textContent = currentProductPrice.toFixed(2) + " €";
-        } else {
-          entityPriceEl.textContent = "Prezzo non disponibile";
-        }
-      })
-      .catch(() => {
-        entityPriceEl.textContent = "Errore prezzo";
-      });
-  }
-
-  function showSystemCard(system) {
-    currentEntity = system;
-    currentEntityType = "system";
-    entityCard.style.display = "flex";
-    entityTypeEl.textContent = "SISTEMA E-COMMERCE";
-    entityTitleEl.textContent = system.name;
-    entityMetaEl.textContent = "Nodi: categorie " + (system.categories?.length || 0);
-    entityRatingEl.textContent = system.rating
-      ? `${renderStars(system.rating)}  (${system.rating.toFixed(1)}/5 • ${system.reviews || 0} recensioni B2B)`
-      : "";
-    entityTagsEl.innerHTML = "";
-    (system.tags || []).forEach(t => {
-      const span = document.createElement("span");
-      span.className = "tag";
-      span.textContent = t;
-      entityTagsEl.appendChild(span);
-    });
-    entityPriceEl.textContent = "";
-    entityQtyWrapper.style.display = "none";
-    entityAdminActions.style.display = "none";
-  }
-
-  function showCategoryCard(system, cat) {
-    currentEntity = cat;
-    currentEntityType = "category";
-    entityCard.style.display = "flex";
-    entityTypeEl.textContent = "CATEGORIA";
-    entityTitleEl.textContent = cat.name;
-    const subs = cat.subcategories?.length || 0;
-    entityMetaEl.textContent = `${system.name} • ${subs} sottocategorie`;
-    entityRatingEl.textContent = "";
-    entityTagsEl.innerHTML = "";
-    (cat.tags || []).forEach(t => {
-      const span = document.createElement("span");
-      span.className = "tag";
-      span.textContent = t;
-      entityTagsEl.appendChild(span);
-    });
-    entityPriceEl.textContent = "";
-    entityQtyWrapper.style.display = "none";
-    entityAdminActions.style.display = "none";
-  }
-
-  function raycastFromTap(x, y) {
-    const mouse = new THREE.Vector2(
-      (x / window.innerWidth) * 2 - 1,
-      -(y / window.innerHeight) * 2 + 1
-    );
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, camera);
-    const meshes = objects.map(o => o.mesh);
-    const hits = raycaster.intersectObjects(meshes, true);
-    if (hits.length === 0) return;
-
-    const hit = hits[0].object;
-    const obj = objects.find(o => o.mesh === hit || o.mesh === hit.parent);
-    if (!obj) return;
-
-    if (obj.type === "system") {
-      enterSystem(obj.ref);
-      return;
-    }
-    if (obj.type === "category") {
-      enterCategory(obj.ref);
-      return;
-    }
-    if (obj.type === "subcategory") {
-      const cat = currentSystem.categories.find(c => c.subcategories.includes(obj.ref));
-      if (cat) enterPlanet(cat, obj.ref);
-      return;
-    }
-    if (obj.type === "product") {
-      focusProduct(obj.ref);
-      return;
-    }
-  }
-
-  function goUpOneLevel() {
-    if (zoomLevel === "PLANET" && currentSystem) {
-      zoomLevel = "SYSTEM";
-      currentSubcategory = null;
-      camera.position.set(0, 3, 11);
-      buildSystemView(currentSystem);
-      showSystemCard(currentSystem);
-      updateLabels();
-      return;
-    }
-    if (zoomLevel === "SYSTEM") {
-      resetToGalaxy();
-      return;
-    }
-  }
-
-  // Mouse handlers
-  canvas.addEventListener("mousedown", (e) => {
-    isDragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-  });
-
-  canvas.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    const dx = e.clientX - lastX;
-    const dy = e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
-
-    targetRotY += dx * 0.005;
-    targetRotX += dy * 0.005;
-  });
-
-  canvas.addEventListener("mouseup", () => {
-    isDragging = false;
-  });
-  canvas.addEventListener("mouseleave", () => {
-    isDragging = false;
-  });
-
-  canvas.addEventListener("click", (e) => {
-    raycastFromTap(e.clientX, e.clientY);
-  });
-
-  // Touch handlers (tap vs drag + fix dy)
-  canvas.addEventListener("touchstart", (e) => {
-    if (e.touches.length === 1) {
-      const t = e.touches[0];
-      isDragging = true;
-      lastX = t.clientX;
-      lastY = t.clientY;
-      touchStartX = t.clientX;
-      touchStartY = t.clientY;
-      touchMoved = false;
-    }
-  });
-
-  canvas.addEventListener("touchmove", (e) => {
-    if (!isDragging || e.touches.length !== 1) return;
-    const t = e.touches[0];
-    const dx = t.clientX - lastX;
-    const dy = t.clientY - lastY;
-    lastX = t.clientX;
-    lastY = t.clientY;
-
-    if (Math.abs(t.clientX - touchStartX) > 5 || Math.abs(t.clientY - touchStartY) > 5) {
-      touchMoved = true;
-    }
-
-    targetRotY += dx * 0.005;
-    targetRotX += dy * 0.005;
-  });
-
-  canvas.addEventListener("touchend", () => {
-    isDragging = false;
-    if (!touchMoved) {
-      raycastFromTap(touchStartX, touchStartY);
-    }
-  });
-
-  canvas.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const delta = e.deltaY;
-    camera.position.z += delta * 0.01;
-    camera.position.z = Math.min(Math.max(camera.position.z, 4), 30);
-    if (camera.position.z > 18 && zoomLevel !== "GALASSIA") {
-      resetToGalaxy();
-    }
-  }, { passive: false });
-
-  function animate() {
-    requestAnimationFrame(animate);
-    scene.rotation.y += 0.0006;
-    scene.rotation.x += 0.00015;
-
-    scene.rotation.y += (targetRotY - scene.rotation.y) * 0.08;
-    scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08;
-
-    renderer.render(scene, camera);
-  }
-  animate();
-
-  window.addEventListener("resize", () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-  });
-
-  // === CHAT LLM: LOGICA ===
-
+  // ================== CHAT UI ==================
   function appendChatMessage(role, text) {
     if (!chatLog) return;
     const div = document.createElement("div");
-    div.className = "chat-msg " + (
-      role === "user" ? "chat-user" :
-      role === "assistant" ? "chat-assistant" :
-      "chat-system"
-    );
+    div.classList.add("chat-msg");
+
+    if (role === "user") {
+      div.classList.add("chat-user");
+    } else if (role === "assistant") {
+      div.classList.add("chat-assistant");
+    } else {
+      div.classList.add("chat-system");
+    }
+
     div.textContent = text;
     chatLog.appendChild(div);
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
-  function setLlmStatus(msg, state = "idle") {
-    if (!llmStatus) return;
-    llmStatus.textContent = msg;
-    llmStatus.classList.remove("status-idle", "status-pending", "status-ok", "status-error");
-    const cls =
-      state === "pending" ? "status-pending" :
-      state === "ok" ? "status-ok" :
-      state === "error" ? "status-error" :
-      "status-idle";
-    llmStatus.classList.add(cls);
-  }
-
-  let llmProbeInFlight = false;
-  async function pingLlm() {
-    if (llmProbeInFlight) return;
-    llmProbeInFlight = true;
-    setLlmStatus("Verifico la connessione al modello locale…", "pending");
-    try {
-      const res = await fetch(LLM_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "ping", n_predict: 8 })
-      });
-      const data = await res.json();
-      if (!res.ok || data?.error) {
-        throw new Error(data?.detail || data?.error || `HTTP ${res.status}`);
-      }
-      setLlmStatus("LLM locale pronto.", "ok");
-    } catch (err) {
-      const detail = err?.message ? ` (${err.message})` : "";
-      setLlmStatus(`LLM non raggiungibile. Avvia start_thelight.sh${detail}`, "error");
-    } finally {
-      llmProbeInFlight = false;
+  function setChatStatus(state) {
+    if (!chatStatus) return;
+    chatStatus.classList.remove("status-idle", "status-pending", "status-sent");
+    if (state === "pending") {
+      chatStatus.textContent = "Pending";
+      chatStatus.classList.add("status-pending");
+    } else if (state === "sent") {
+      chatStatus.textContent = "Inviato";
+      chatStatus.classList.add("status-sent");
+    } else {
+      chatStatus.textContent = "Non inviato";
+      chatStatus.classList.add("status-idle");
     }
   }
 
@@ -1849,10 +892,10 @@
     if (!chatInput) return;
     const text = chatInput.value.trim();
     if (!text) return;
+
     chatInput.value = "";
     appendChatMessage("user", text);
-
-    setLlmStatus("Invio richiesta al modello locale…", "pending");
+    setChatStatus("pending");
 
     const payload = {
       prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
@@ -1865,59 +908,55 @@
     try {
       const res = await fetch(LLM_URL, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (!res.ok || data?.error) {
-        const errMsg = data?.detail || data?.error || `HTTP ${res.status}`;
-        throw new Error(errMsg);
-      }
-      let reply = "";
 
+      const data = await res.json();
+
+      let reply = "";
       if (data && typeof data.content === "string") {
         reply = data.content;
-      } else if (data && Array.isArray(data.content)) {
-        reply = data.content
-          .map(p => (typeof p === "string" ? p : (p && p.content) || ""))
-          .join("");
-      } else if (data && Array.isArray(data.choices) && data.choices.length) {
-        const ch = data.choices[0];
-        if (typeof ch.text === "string") {
-          reply = ch.text;
-        } else if (ch.message && typeof ch.message.content === "string") {
-          reply = ch.message.content;
-        }
       } else {
-        reply = "";
+        reply = JSON.stringify(data, null, 2);
       }
 
       if (!reply) {
-        reply = "Risposta ricevuta ma non interpretabile dal modello.";
+        reply = "[Nessuna risposta dal modello]";
       }
 
       appendChatMessage("assistant", String(reply).trim());
-      setLlmStatus("LLM locale pronto.", "ok");
+      setChatStatus("sent");
     } catch (e) {
-      const fallbackMsg = "LLM locale non raggiungibile. Avvia start_thelight.sh (porta 8081).";
-      appendChatMessage("system", fallbackMsg);
-      setLlmStatus(`${fallbackMsg}${e?.message ? ` (${e.message})` : ""}`, "error");
+      appendChatMessage("system", "Errore nel contattare il modello su 127.0.0.1:8081");
+      setChatStatus("idle");
     }
   }
 
-  if (btnChat) {
+  // ================== EVENT LISTENERS ==================
+
+  // Apertura modale Chat AI
+  if (btnChat && sheetChat) {
     btnChat.addEventListener("click", () => {
       showSheet(sheetChat);
-      pingLlm();
+      setChatStatus("idle");
       if (chatInput) chatInput.focus();
     });
   }
-  if (btnChatClose) {
-    btnChatClose.addEventListener("click", () => hideSheet(sheetChat));
+
+  // Chiusura modale Chat AI
+  if (btnChatClose && sheetChat) {
+    btnChatClose.addEventListener("click", () => {
+      hideSheet(sheetChat);
+    });
   }
+
+  // Invia da bottone
   if (btnChatSend) {
     btnChatSend.addEventListener("click", sendChatMessage);
   }
+
+  // Invia con Invio
   if (chatInput) {
     chatInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1927,12 +966,12 @@
     });
   }
 
-  // Bottone indietro globale: chiude modali e resetta la mappa
+  // Bottone "Indietro" globale: chiude tutte le modali e resetta mappa
   function globalBack() {
     [sheetRegister, sheetLogin, sheetCart, sheetProduct, sheetChat].forEach(el => {
       if (el) el.style.display = "none";
     });
-    entityCard.style.display = "none";
+    if (entityCard) entityCard.style.display = "none";
     resetToGalaxy();
   }
 
@@ -1940,15 +979,15 @@
     btnBack.addEventListener("click", globalBack);
   }
 
-  // EXPORT MINIMO
+  // ================== EXPORT MINIMO ==================
   window.TheLightUniverse = {
     getCurrentProduct: () => (currentEntityType === "product" ? currentEntity : null),
     getCurrentUser: () => currentUser,
     showToast,
-    BASE_URL,
-    openProductEditor
+    BASE_URL
   };
 
+  // Init UI base
   updateUserUI();
   updateLabels();
 </script>
