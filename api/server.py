@@ -1,7 +1,9 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +37,49 @@ from .db import (
 # ================== CONFIG BASE ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
+LOG_FILE = LOG_DIR / "api.log"
+
+logger = logging.getLogger("thelight24.api")
+logger.setLevel(logging.INFO)
+
+# Evita handler duplicati se il modulo viene ricaricato
+if not logger.handlers:
+    handler = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=2 * 1024 * 1024,  # 2 MB
+        backupCount=3,
+        encoding="utf-8",
+    )
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # Log anche su stdout (utile in fase debug)
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    logger.addHandler(console)
+
+logger.info("TheLight24 API avviata (server.py caricato)")
+
+
+def log_event(event: str, **extra: Any) -> None:
+    """
+    Logga un evento applicativo strutturato.
+    Esempio: log_event("user_login", email=email, tier=tier)
+    """
+    payload = {"event": event}
+    payload.update(extra)
+    try:
+        logger.info(json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        # Fallback se qualcosa in extra non è serializzabile
+        logger.info("%s | extra=%r", event, extra)
 
 
 def _resolve_ui_index() -> Path:
@@ -179,6 +224,12 @@ async def auth_register(request: web.Request) -> web.Response:
         piva=body.get("piva") or "",
         phone=body.get("phone") or "",
     )
+    log_event(
+        "user_registered",
+        email=email,
+        tier=tier,
+        piva=body.get("piva") or "",
+    )
     return web.json_response({"status": "ok", "tier": tier})
 
 
@@ -190,16 +241,25 @@ async def auth_login(request: web.Request) -> web.Response:
     ADMIN_EMAIL = "god@local"
     ADMIN_PASS = "OrmaNet!2025$Light"
     if email == ADMIN_EMAIL and password == ADMIN_PASS:
+        log_event("admin_login", email=email, tier="distributore")
         return web.json_response({"status": "ok", "name": "GOD ADMIN", "tier": "distributore", "token": None})
 
     user = get_user_by_email(email)
     if not user:
+        log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
 
     if user.get("password_hash") != hash_password(password):
+        log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
 
     token = create_session(user_id=user["id"], days_valid=30)
+    log_event(
+        "user_login",
+        email=email,
+        tier=user.get("tier", "rivenditore10"),
+        token=token,
+    )
     return web.json_response(
         {
             "status": "ok",
@@ -240,6 +300,12 @@ async def pricing(request: web.Request) -> web.Response:
 
 async def order_draft(request: web.Request) -> web.Response:
     body = await request.json()
+    log_event(
+        "order_draft",
+        user_tier=body.get("user_tier"),
+        user_name=body.get("user_name"),
+        items=len(body.get("items") or []),
+    )
     return web.json_response({"status": "ok", "received": body})
 
 
@@ -275,6 +341,12 @@ async def admin_clients_all(request: web.Request) -> web.Response:
 async def admin_clients_save(request: web.Request) -> web.Response:
     body = await request.json()
     saved = save_client(body)
+    log_event(
+        "client_save",
+        id=saved.get("id"),
+        ragione_sociale=saved.get("ragione_sociale") or saved.get("name"),
+        listino=saved.get("listino"),
+    )
     return web.json_response(saved)
 
 
@@ -283,6 +355,7 @@ async def admin_clients_delete(request: web.Request) -> web.Response:
     if body.get("id"):
         delete_id = int(body["id"])
         delete_client(delete_id)
+        log_event("client_delete", id=delete_id)
     return web.json_response({"status": "ok"})
 
 
@@ -482,6 +555,11 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
         products.append(saved)
 
     save_import_metadata(file_part.filename or "listino.xls", len(products))
+    log_event(
+        "price_list_import",
+        filename=file_part.filename or "listino.xls",
+        imported_count=len(products),
+    )
     return web.json_response({"status": "ok", "products": products})
 
 
@@ -567,10 +645,49 @@ async def llm_chat(request: web.Request) -> web.Response:
     return web.json_response({"content": content})
 
 
+@web.middleware
+async def request_logger_middleware(request: web.Request, handler):
+    start = datetime.now(timezone.utc)
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        duration = (datetime.now(timezone.utc) - start).total_seconds()
+        logger.warning(
+            "HTTP %s %s -> %s (%.3fs) [EXC]",
+            request.method,
+            request.path,
+            exc.status,
+            duration,
+        )
+        raise
+    except Exception as exc:  # noqa: BLE001
+        duration = (datetime.now(timezone.utc) - start).total_seconds()
+        logger.exception(
+            "HTTP %s %s -> 500 (%.3fs) [UNHANDLED ERROR]",
+            request.method,
+            request.path,
+            duration,
+        )
+        return web.json_response(
+            {"error": "internal_error", "detail": str(exc)},
+            status=500,
+        )
+
+    duration = (datetime.now(timezone.utc) - start).total_seconds()
+    logger.info(
+        "HTTP %s %s -> %s (%.3fs)",
+        request.method,
+        request.path,
+        getattr(response, "status", "?"),
+        duration,
+    )
+    return response
+
+
 # ================== APP FACTORY ==================
 
 def create_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[request_logger_middleware])
 
     # GUI
     app.router.add_get("/", ui_index)
@@ -618,6 +735,12 @@ def main() -> None:
     """Avvia il server API aiohttp."""
     host = os.environ.get("API_HOST", "127.0.0.1")
     port = int(os.environ.get("API_PORT", 8080))
+    logger.info(
+        "Avvio TheLight24 API server su %s:%s (LLM_BACKEND_URL=%s)",
+        host,
+        port,
+        LLM_BACKEND_URL,
+    )
     web.run_app(app, host=host, port=port)
 
 
