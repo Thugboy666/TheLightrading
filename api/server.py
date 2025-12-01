@@ -316,17 +316,14 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
             email,
             telefono,
             source,
-            visura,
             pagamento_preferito,
             listino,
-        ) = (list(raw) + [None] * 12)[:12]
+        ) = (list(raw) + [None] * 11)[:11]
 
         existing = find_client_by_email_or_piva(email, piva)
         note_parts = []
         if source:
             note_parts.append(f"Source: {source}")
-        if visura:
-            note_parts.append(f"Visura: {visura}")
         if pagamento_preferito:
             note_parts.append(f"Pagamento: {pagamento_preferito}")
         if regime_fiscale:
