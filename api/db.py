@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -55,11 +56,28 @@ def init_db() -> None:
                 listino TEXT,
                 stato TEXT,
                 note TEXT,
+                promo_enabled INTEGER DEFAULT 0,
+                promo_points INTEGER DEFAULT 0,
+                promo_ticket_code TEXT,
+                promo_last_update TEXT,
                 created_at TEXT,
                 updated_at TEXT
             )
             """
         )
+        # PROMO NATALE: migrazione colonne
+        existing_cols = {
+            row["name"] for row in cur.execute("PRAGMA table_info(clients)").fetchall()
+        }
+        migrations = [
+            ("promo_enabled", "ALTER TABLE clients ADD COLUMN promo_enabled INTEGER DEFAULT 0"),
+            ("promo_points", "ALTER TABLE clients ADD COLUMN promo_points INTEGER DEFAULT 0"),
+            ("promo_ticket_code", "ALTER TABLE clients ADD COLUMN promo_ticket_code TEXT"),
+            ("promo_last_update", "ALTER TABLE clients ADD COLUMN promo_last_update TEXT"),
+        ]
+        for col, stmt in migrations:
+            if col not in existing_cols:
+                cur.execute(stmt)
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS discount_rules (
@@ -111,6 +129,17 @@ def init_db() -> None:
                 user_id INTEGER,
                 created_at TEXT,
                 expires_at TEXT
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS promo_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER,
+                action_code TEXT,
+                points INTEGER,
+                created_at TEXT
             )
             """
         )
@@ -186,14 +215,48 @@ def list_clients() -> List[Dict[str, Any]]:
         return [row_to_dict(r) for r in cur.fetchall()]
 
 
+def get_client_by_id(client_id: int) -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cur = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+        row = cur.fetchone()
+        return row_to_dict(row) if row else None
+
+
+def find_client_by_email_or_piva(email: Optional[str], piva: Optional[str]) -> Optional[Dict[str, Any]]:
+    query = "SELECT * FROM clients WHERE 1=1"
+    params: list[Any] = []
+    conditions: list[str] = []
+    if email:
+        conditions.append("LOWER(email) = LOWER(?)")
+        params.append(email)
+    if piva:
+        conditions.append("piva = ?")
+        params.append(piva)
+    if not conditions:
+        return None
+    query += " AND (" + " OR ".join(conditions) + ")"
+    with get_db() as conn:
+        cur = conn.execute(query, tuple(params))
+        row = cur.fetchone()
+        return row_to_dict(row) if row else None
+
+
 def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
+    promo_enabled = 1 if str(data.get("promo_enabled", 0)) in ("1", "true", "True") else 0
+    promo_points = int(data.get("promo_points", 0) or 0)
+    promo_ticket_code = data.get("promo_ticket_code") or None
+    promo_last_update = data.get("promo_last_update") or None
     with get_db() as conn:
         if data.get("id"):
+            existing = get_client_by_id(int(data["id"]))
+            promo_ticket_code = promo_ticket_code or (existing or {}).get("promo_ticket_code")
+            if existing and not promo_last_update:
+                promo_last_update = existing.get("promo_last_update")
             conn.execute(
                 """
                 UPDATE clients
-                SET ragione_sociale = ?, piva = ?, email = ?, telefono = ?, listino = ?, stato = ?, note = ?, updated_at = ?
+                SET ragione_sociale = ?, piva = ?, email = ?, telefono = ?, listino = ?, stato = ?, note = ?, promo_enabled = ?, promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -204,6 +267,10 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
                     data.get("listino"),
                     data.get("stato"),
                     data.get("note"),
+                    promo_enabled,
+                    promo_points,
+                    promo_ticket_code,
+                    promo_last_update,
                     now,
                     data.get("id"),
                 ),
@@ -211,8 +278,8 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
         else:
             cur = conn.execute(
                 """
-                INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get("ragione_sociale"),
@@ -222,6 +289,10 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
                     data.get("listino"),
                     data.get("stato"),
                     data.get("note"),
+                    promo_enabled,
+                    promo_points,
+                    promo_ticket_code,
+                    promo_last_update,
                     now,
                     now,
                 ),
@@ -239,6 +310,97 @@ def delete_client(client_id: int) -> None:
     with get_db() as conn:
         conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
         conn.commit()
+
+
+# PROMO NATALE: gestione punti
+def _generate_ticket_code() -> str:
+    return f"XMAS-{uuid.uuid4().hex[:8].upper()}"
+
+
+def add_promo_points(client_id: int, action_code: str, points: int) -> Optional[Dict[str, Any]]:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        client = get_client_by_id(client_id)
+        if not client:
+            return None
+
+        new_points = int(client.get("promo_points") or 0) + int(points)
+        ticket_code = client.get("promo_ticket_code")
+        if not ticket_code and int(client.get("promo_enabled") or 0) == 1:
+            ticket_code = _generate_ticket_code()
+
+        conn.execute(
+            """
+            UPDATE clients
+            SET promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (new_points, ticket_code, now, now, client_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO promo_logs (client_id, action_code, points, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (client_id, action_code, points, now),
+        )
+        conn.commit()
+    return get_client_by_id(client_id)
+
+
+def get_promo_summary(client_id: int) -> Dict[str, Any]:
+    client = get_client_by_id(client_id)
+    if not client:
+        return {}
+    with get_db() as conn:
+        cur = conn.execute(
+            "SELECT action_code, points, created_at FROM promo_logs WHERE client_id = ? ORDER BY id DESC",
+            (client_id,),
+        )
+        actions = [row_to_dict(r) for r in cur.fetchall()]
+
+    points = int(client.get("promo_points") or 0)
+    if points >= 1000:
+        tier = "max"
+    elif points >= 850:
+        tier = "tier2"
+    elif points >= 350:
+        tier = "tier1"
+    else:
+        tier = "base"
+
+    prizes: list[str] = []
+    if tier == "tier1":
+        prizes = [
+            "1 premio disponibile",
+            "Spedizione gratuita prime due settimane di gennaio",
+            "Omaggi su prodotti trattati",
+        ]
+    elif tier == "tier2":
+        prizes = [
+            "Fino a 2 premi disponibili",
+            "Spedizione gratuita prime due settimane di gennaio",
+            "Sconto massimo sul fatturato di gennaio",
+            "Omaggi prodotti trattati",
+            "Sconto minimo 3 mesi su categoria trattata",
+        ]
+    elif tier == "max":
+        prizes = [
+            "Biglietto fortunato: tutti i vantaggi (max 3 premi)",
+            "Spedizione gratuita prime due settimane di gennaio",
+            "Sconto massimo sul fatturato di gennaio",
+            "Omaggi prodotti trattati",
+            "Sconto minimo 3 mesi su categoria trattata",
+        ]
+
+    return {
+        "points": points,
+        "actions": actions,
+        "tier": tier,
+        "prizes_available": prizes,
+        "promo_enabled": int(client.get("promo_enabled") or 0) == 1,
+        "promo_ticket_code": client.get("promo_ticket_code"),
+    }
 
 
 # ========== DISCOUNT RULES ========== #
@@ -371,8 +533,12 @@ __all__ = [
     "create_session",
     "get_session",
     "list_clients",
+    "get_client_by_id",
+    "find_client_by_email_or_piva",
     "save_client",
     "delete_client",
+    "add_promo_points",
+    "get_promo_summary",
     "list_discount_rules",
     "clear_discount_rules_for_offer_segment",
     "insert_discount_rule",

@@ -15,8 +15,11 @@ from .db import (
     clear_discount_rules_for_offer_segment,
     create_session,
     create_user,
+    add_promo_points,
     delete_client,
+    find_client_by_email_or_piva,
     get_product_by_sku,
+    get_promo_summary,
     get_session,
     get_user_by_email,
     init_db,
@@ -283,6 +286,120 @@ async def admin_clients_delete(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+async def admin_clients_import_promo(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+    file_part = None
+    async for part in reader:
+        if part.name == "file":
+            file_part = part
+            break
+    if not file_part:
+        return web.json_response({"status": "ko", "error": "missing_file"}, status=400)
+
+    file_data = await file_part.read()
+    workbook = load_workbook(BytesIO(file_data), data_only=True)
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+
+    imported = 0
+    updated = 0
+    for raw in rows:
+        if not raw or all(v is None for v in raw):
+            continue
+        (
+            tipo,
+            ragione_sociale,
+            piva,
+            sdi_pec,
+            regime_fiscale,
+            indirizzo,
+            email,
+            telefono,
+            source,
+            visura,
+            pagamento_preferito,
+            listino,
+        ) = (list(raw) + [None] * 12)[:12]
+
+        existing = find_client_by_email_or_piva(email, piva)
+        note_parts = []
+        if source:
+            note_parts.append(f"Source: {source}")
+        if visura:
+            note_parts.append(f"Visura: {visura}")
+        if pagamento_preferito:
+            note_parts.append(f"Pagamento: {pagamento_preferito}")
+        if regime_fiscale:
+            note_parts.append(f"Regime: {regime_fiscale}")
+        if indirizzo:
+            note_parts.append(f"Indirizzo: {indirizzo}")
+        if sdi_pec:
+            note_parts.append(f"SDI/PEC: {sdi_pec}")
+
+        note_value = "; ".join([p for p in note_parts if p])
+        if existing and existing.get("note"):
+            note_value = note_value + ("; " if note_value else "") + str(existing.get("note"))
+
+        payload: dict[str, Any] = {
+            "id": existing.get("id") if existing else None,
+            "ragione_sociale": ragione_sociale,
+            "piva": piva,
+            "email": email,
+            "telefono": telefono,
+            "listino": listino or (existing.get("listino") if existing else None),
+            "stato": existing.get("stato") if existing else "attivo",
+            "note": note_value,
+            "promo_enabled": 1,
+            "promo_points": existing.get("promo_points") if existing else 0,
+            "promo_ticket_code": existing.get("promo_ticket_code")
+            if existing
+            else f"XMAS-{uuid.uuid4().hex[:8].upper()}",
+            "promo_last_update": existing.get("promo_last_update") or now_iso(),
+        }
+        save_client(payload)
+        if existing:
+            updated += 1
+        else:
+            imported += 1
+
+    return web.json_response({"status": "ok", "imported": imported, "updated": updated})
+
+
+PROMO_POINTS = {
+    "FOLLOW_SOCIAL": 5,
+    "ADD_BROADCAST": 50,
+    "ORDER_REMAN": 100,
+    "REACH_AVG_REVENUE": 200,
+    "UPSELL_REVENUE": 500,
+    "BRING_NEW_COMPANY": 1000,
+}
+
+
+async def admin_promo_add_points(request: web.Request) -> web.Response:
+    body = await request.json()
+    client_id = body.get("client_id")
+    action_code = body.get("action_code")
+    if not client_id or action_code not in PROMO_POINTS:
+        return web.json_response({"status": "ko", "error": "invalid_payload"}, status=400)
+
+    updated_client = add_promo_points(int(client_id), action_code, PROMO_POINTS[action_code])
+    if not updated_client:
+        return web.json_response({"status": "ko", "error": "client_not_found"}, status=404)
+
+    summary = get_promo_summary(int(client_id))
+    return web.json_response({"status": "ok", "client": updated_client, "summary": summary})
+
+
+async def admin_promo_summary(request: web.Request) -> web.Response:
+    client_id = request.query.get("client_id")
+    if not client_id:
+        return web.json_response({"status": "ko", "error": "missing_client_id"}, status=400)
+    summary = get_promo_summary(int(client_id))
+    if not summary:
+        return web.json_response({"status": "ko", "error": "client_not_found"}, status=404)
+    return web.json_response(summary)
+
+
 async def admin_offers_all(request: web.Request) -> web.Response:
     return web.json_response({"configs": discount_rules_to_configs()})
 
@@ -482,6 +599,9 @@ def create_app() -> web.Application:
     app.router.add_get("/admin/clients/all", admin_clients_all)
     app.router.add_post("/admin/clients/save", admin_clients_save)
     app.router.add_post("/admin/clients/delete", admin_clients_delete)
+    app.router.add_post("/admin/clients/import_promo", admin_clients_import_promo)
+    app.router.add_post("/admin/promo/add_points", admin_promo_add_points)
+    app.router.add_get("/admin/promo/summary", admin_promo_summary)
     app.router.add_get("/admin/offers/all", admin_offers_all)
     app.router.add_post("/admin/offers/save", admin_offers_save)
     app.router.add_get("/admin/products/all", admin_products_all)
