@@ -154,13 +154,15 @@ fi
 if [ -f "$RUN_DIR/gui.pid" ] && kill -0 "$(cat "$RUN_DIR/gui.pid")" 2>/dev/null; then
   echo "ℹ️  API+GUI già avviate (PID $(cat "$RUN_DIR/gui.pid"))."
 else
-  echo "▶️  Avvio API+GUI (python api/server.py) su ${API_HOST}:${API_PORT}"
+  echo "▶️  Avvio API+GUI (python -m api.server) su ${API_HOST}:${API_PORT}"
   (
     cd "$BASEDIR" && \
+    . "$BASEDIR/.venv/bin/activate" && \
+    export PYTHONPATH="$BASEDIR" && \
     API_HOST="$API_HOST" \
     API_PORT="$API_PORT" \
     LLM_BACKEND_URL="http://127.0.0.1:${LLM_PORT}/completion" \
-    nohup python api/server.py > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$RUN_DIR/gui.pid"
+    nohup python -m api.server > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$RUN_DIR/gui.pid"
   )
   sleep 2
 fi
