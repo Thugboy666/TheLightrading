@@ -518,6 +518,7 @@
       <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
       <button class="btn secondary" id="btn-cart">Carrello (0)</button>
       <button class="btn secondary" id="btn-login">Login</button>
+      <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
       <button class="btn" id="btn-register">Registrati</button>
     </div>
   </div>
@@ -681,6 +682,13 @@
       <div class="field">
         <label>Password</label>
         <input id="login-password" type="password" />
+      </div>
+
+      <div class="field">
+        <label>
+          <input type="checkbox" id="login-remember" />
+          Ricordami su questo dispositivo
+        </label>
       </div>
 
       <div class="sheet-actions">
@@ -1076,33 +1084,13 @@
       ]
     }
   ];
-  let discountConfigs = [
-    {
-      id: "offerta-consumabili-originali",
-      rules: {
-        distributore: [
-          { min: 100, max: 1000, discount: 1, valid_until: "2025-12-31" },
-          { min: 1000, max: 10000, discount: 2, valid_until: "2025-12-31" },
-          { min: 10000, max: Infinity, discount: 4, valid_until: "2025-12-31" },
-        ],
-        rivenditore: [
-          { min: 100, max: 200, discount: 2, valid_until: "2025-12-31" },
-          { min: 200, max: 1000, discount: 5, valid_until: "2025-12-31" },
-          { min: 1000, max: 5000, discount: 7, valid_until: "2025-12-31" },
-        ],
-        rivenditore10: [
-          { min: 50, max: 100, discount: 5, valid_until: "2025-12-31" },
-          { min: 100, max: 350, discount: 10, valid_until: "2025-12-31" },
-          { min: 350, max: Infinity, discount: 15, valid_until: "2025-12-31" },
-        ],
-      }
-    }
-  ];
+  let discountConfigs = [];
 
   let currentUser = {
     logged: false,
     tier: "ospite",
     name: null,
+    token: null,
   };
 
   let zoomLevel = "GALASSIA";
@@ -1229,6 +1217,7 @@
   document.getElementById("btn-reg-cancel").addEventListener("click", () => hideSheet(sheetRegister));
   document.getElementById("btn-login").addEventListener("click", () => showSheet(sheetLogin));
   document.getElementById("btn-login-cancel").addEventListener("click", () => hideSheet(sheetLogin));
+  document.getElementById("btn-logout").addEventListener("click", logout);
   btnCart.addEventListener("click", () => showSheet(sheetCart));
   if (btnAdmin) {
     btnAdmin.addEventListener("click", () => showSheet(sheetAdmin));
@@ -1277,6 +1266,54 @@
     toast.style.background = ok ? "rgba(22,163,74,0.9)" : "rgba(185,28,28,0.9)";
     toast.style.display = "block";
     setTimeout(() => { toast.style.display = "none"; }, 2500);
+  }
+
+  function buildAuthHeaders(contentType = "application/json") {
+    const headers = {};
+    if (contentType) headers["Content-Type"] = contentType;
+    if (currentUser.token) headers["Authorization"] = "Bearer " + currentUser.token;
+    return headers;
+  }
+
+  function saveSessionToStorage(user, token, remember) {
+    const payload = {
+      name: user.name,
+      tier: user.tier,
+      token,
+      email: user.email || null
+    };
+    const storage = remember ? window.localStorage : window.sessionStorage;
+    storage.setItem("thelight24_session", JSON.stringify(payload));
+  }
+
+  function clearSessionStorage() {
+    window.localStorage.removeItem("thelight24_session");
+    window.sessionStorage.removeItem("thelight24_session");
+  }
+
+  function restoreSessionFromStorage() {
+    const raw = window.localStorage.getItem("thelight24_session") ||
+                window.sessionStorage.getItem("thelight24_session");
+    if (!raw) return;
+
+    try {
+      const sess = JSON.parse(raw);
+      if (!sess || !sess.token) return;
+      currentUser.logged = true;
+      currentUser.name = sess.name || sess.email || "utente";
+      currentUser.tier = sess.tier || "rivenditore10";
+      currentUser.token = sess.token;
+      updateUserUI();
+    } catch (e) {
+      console.error("Errore restoreSessionFromStorage", e);
+    }
+  }
+
+  function logout() {
+    currentUser = { logged: false, tier: "ospite", name: null, token: null };
+    clearSessionStorage();
+    updateUserUI();
+    showToast("Sei uscito dall'account.");
   }
 
   function toggleMiniOffer(adminSettings, productData) {
@@ -1358,7 +1395,7 @@
 
   async function saveClient() {
     const client = {
-      id: editingClientId || Date.now(),
+      id: editingClientId || null,
       ragione_sociale: clientNameInput.value,
       piva: clientPivaInput.value,
       email: clientEmailInput.value,
@@ -1367,17 +1404,21 @@
       stato: clientStatoInput.value,
       note: clientNoteInput.value,
     };
-    const existingIdx = clients.findIndex((c) => c.id === client.id);
-    if (existingIdx >= 0) clients[existingIdx] = client; else clients.push(client);
-    renderClientsTable();
+    const existingIdx = client.id ? clients.findIndex((c) => c.id === client.id) : -1;
     try {
       await fetch(BASE_URL + "/admin/clients/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildAuthHeaders(),
         body: JSON.stringify(client),
       });
+      const refreshed = await fetch(BASE_URL + "/admin/clients/all", { headers: buildAuthHeaders() });
+      const data = await refreshed.json();
+      clients = data.clients || [];
+      renderClientsTable();
       showToast("Cliente salvato");
     } catch (e) {
+      if (existingIdx >= 0) clients[existingIdx] = client; else clients.push(client);
+      renderClientsTable();
       showToast("Cliente salvato in locale", false);
     }
     fillClientForm();
@@ -1389,9 +1430,13 @@
     try {
       await fetch(BASE_URL + "/admin/clients/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildAuthHeaders(),
         body: JSON.stringify({ id }),
       });
+      const refreshed = await fetch(BASE_URL + "/admin/clients/all", { headers: buildAuthHeaders() });
+      const data = await refreshed.json();
+      clients = data.clients || [];
+      renderClientsTable();
     } catch (e) {
       showToast("Cliente eliminato solo in locale", false);
     }
@@ -1429,7 +1474,7 @@
           </tr>`;
         }
         return rules.map((r) => {
-          const maxLabel = r.max === Infinity ? "∞" : r.max;
+          const maxLabel = !isFinite(r.max) || r.max === null ? "∞" : r.max;
           return `<tr>
             <td style="padding:2px 4px;">${cfg.id}</td>
             <td style="padding:2px 4px;">${findOfferTitle(cfg.id)}</td>
@@ -1476,16 +1521,18 @@
       discountConfigs.push(cfg);
     }
     const list = cfg.rules[segment] || [];
-    const existingIdx = list.findIndex((r) => r.min === min && r.max === max);
-    const rule = { min, max: isFinite(max) ? max : Infinity, discount: percent, valid_until: valid };
+    const maxValue = isFinite(max) ? max : null;
+    const existingIdx = list.findIndex((r) => r.min === min && (r.max === maxValue || (!isFinite(r.max) && maxValue === null)));
+    const rule = { min, max: maxValue === null ? Infinity : maxValue, discount: percent, valid_until: valid };
     if (existingIdx >= 0) list[existingIdx] = rule; else list.push(rule);
     cfg.rules[segment] = list;
     renderDiscountPreview();
     try {
+      const payload = JSON.parse(JSON.stringify(cfg, (k, v) => (v === Infinity ? null : v)));
       await fetch(BASE_URL + "/admin/offers/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cfg),
+        headers: buildAuthHeaders(),
+        body: JSON.stringify(payload),
       });
     } catch (e) {
       showToast("Configurazione salvata localmente", false);
@@ -1521,6 +1568,7 @@
   async function importPriceList(formData) {
     const response = await fetch(BASE_URL + "/admin/price_list/import", {
       method: "POST",
+      headers: buildAuthHeaders(null),
       body: formData,
     });
     const data = await response.json();
@@ -1529,7 +1577,7 @@
   }
 
   function getProductByID(productID) {
-    const inPriceList = priceList.find((p) => String(p.id) === String(productID));
+    const inPriceList = priceList.find((p) => String(p.id) === String(productID) || String(p.sku) === String(productID));
     if (inPriceList) return inPriceList;
 
     for (const system of offersUniverse) {
@@ -1622,6 +1670,7 @@
       email: document.getElementById("login-email").value,
       password: document.getElementById("login-password").value,
     };
+    const remember = document.getElementById("login-remember").checked;
     if (!payload.email || !payload.password) {
       showToast("Email e password obbligatorie.", false);
       return;
@@ -1633,9 +1682,15 @@
       currentUser.logged = true;
       currentUser.name = "GOD ADMIN";
       currentUser.tier = "distributore";
+      currentUser.token = null;
       updateUserUI();
       hideSheet(sheetLogin);
       showToast("Modalità admin attiva");
+      saveSessionToStorage(
+        { name: currentUser.name, tier: currentUser.tier, email: payload.email },
+        null,
+        remember
+      );
       return;
     }
 
@@ -1650,9 +1705,16 @@
         currentUser.logged = true;
         currentUser.name = json.name || payload.email;
         currentUser.tier = json.tier || "rivenditore10";
+        currentUser.token = json.token || null;
         updateUserUI();
         hideSheet(sheetLogin);
         showToast("Bentornato, " + currentUser.name);
+
+        saveSessionToStorage(
+          { name: currentUser.name, tier: currentUser.tier, email: payload.email },
+          currentUser.token,
+          remember
+        );
       } else {
         showToast("Credenziali errate.", false);
       }
@@ -1698,7 +1760,7 @@
     }
     fetch(BASE_URL + "/ecom/order_draft", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: buildAuthHeaders(),
       body: JSON.stringify({
         user_tier: currentUser.tier,
         user_name: currentUser.name,
@@ -1749,6 +1811,7 @@
     tierLabel.textContent = currentUser.tier;
     if (currentUser.logged) {
       document.getElementById("btn-login").textContent = "Account";
+      document.getElementById("btn-logout").style.display = "inline-flex";
       document.getElementById("btn-register").style.display = "none";
       if (currentUser.name === "GOD ADMIN" && btnAdmin) {
         btnAdmin.style.display = "inline-flex";
@@ -1757,6 +1820,7 @@
       }
     } else {
       document.getElementById("btn-login").textContent = "Login";
+      document.getElementById("btn-logout").style.display = "none";
       document.getElementById("btn-register").style.display = "inline-flex";
       if (btnAdmin) btnAdmin.style.display = "none";
     }
@@ -1898,7 +1962,7 @@
     try {
       await fetch(BASE_URL + "/ecom/product/update", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildAuthHeaders(),
         body: JSON.stringify(payload),
       });
       showToast("Scheda prodotto aggiornata.");
@@ -2502,10 +2566,11 @@
 
     fetch(BASE_URL + "/ecom/pricing", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: buildAuthHeaders(),
       body: JSON.stringify({
         sku: prod.sku,
-        base_price: 10,
+        base_price: prod.base_price || prod.price || 0,
+        offer_id: (prod.extra || {}).offer_id,
         customer_segment: currentUser.tier,
         quantity: 1
       })
@@ -2885,6 +2950,46 @@
     }
   });
 
+  async function bootstrapUniverse() {
+    try {
+      restoreSessionFromStorage();
+      const authHeaders = buildAuthHeaders();
+      const [offersRes, clientsRes, productsRes] = await Promise.all([
+        fetch(BASE_URL + "/admin/offers/all", { headers: authHeaders }),
+        fetch(BASE_URL + "/admin/clients/all", { headers: authHeaders }),
+        fetch(BASE_URL + "/admin/products/all", { headers: authHeaders })
+      ]);
+
+      const offersJson = await offersRes.json();
+      const clientsJson = await clientsRes.json();
+      const productsJson = await productsRes.json();
+
+      discountConfigs = (offersJson.configs || []).map((cfg) => {
+        const normalized = { ...cfg, rules: {} };
+        Object.entries(cfg.rules || {}).forEach(([seg, rules]) => {
+          normalized.rules[seg] = (rules || []).map((r) => ({
+            ...r,
+            max: r.max === null ? Infinity : r.max
+          }));
+        });
+        return normalized;
+      });
+      clients = clientsJson.clients || [];
+      priceList = productsJson.products || [];
+
+      renderDiscountPreview();
+      renderClientsTable();
+    } catch (e) {
+      console.error("Errore bootstrapUniverse", e);
+    } finally {
+      updateUserUI();
+      ensureDiscountSelectFilled();
+      fillClientForm();
+      switchAdminTab("clients");
+      updateLabels();
+    }
+  }
+
   // EXPORT MINIMO
   window.TheLightUniverse = {
     getCurrentProduct: () => (currentEntityType === "product" ? currentEntity : null),
@@ -2893,14 +2998,7 @@
     BASE_URL,
     openProductEditor
   };
-
-  updateUserUI();
-  ensureDiscountSelectFilled();
-  renderDiscountPreview();
-  renderClientsTable();
-  fillClientForm();
-  switchAdminTab("clients");
-  updateLabels();
+  bootstrapUniverse();
 </script>
 </body>
 </html>

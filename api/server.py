@@ -1,9 +1,33 @@
 import os
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+import hashlib
+import json
 import httpx
 from aiohttp import web
+from openpyxl import load_workbook
+
+from .db import (
+    clear_discount_rules_for_offer_segment,
+    create_session,
+    create_user,
+    delete_client,
+    get_product_by_sku,
+    get_session,
+    get_user_by_email,
+    init_db,
+    insert_discount_rule,
+    list_clients,
+    list_discount_rules,
+    list_products,
+    save_client,
+    save_import_metadata,
+    upsert_product,
+)
 
 # ================== CONFIG BASE ==================
 
@@ -27,6 +51,9 @@ def _resolve_ui_index() -> Path:
 
 UI_INDEX = _resolve_ui_index()
 
+# Initialize persistence layer
+init_db()
+
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
 #   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
 #   - altrimenti usiamo THELIGHT_LLM_BASE_URL / completions di default
@@ -39,26 +66,68 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def compute_price(sku: str, base_price: float, customer_segment: str, quantity: int):
-    """
-    Fallback stupidamente funzionante:
-    - rivenditore10: prezzo base
-    - rivenditore: -10%
-    - distributore: -20%
-    - ospite/altro: +10%
-    """
-    factor = {
-        "rivenditore10": 1.0,
-        "rivenditore": 0.9,
-        "distributore": 0.8,
-    }.get(customer_segment, 1.1)
-    price = base_price * factor
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def discount_rules_to_configs() -> list[dict]:
+    configs: dict[str, dict] = {}
+    for row in list_discount_rules():
+        cfg = configs.setdefault(row["offer_id"], {"id": row["offer_id"], "rules": {}})
+        seg_rules = cfg["rules"].setdefault(row["segment"], [])
+        seg_rules.append(
+            {
+                "min": row["min_amount"],
+                "max": row["max_amount"] if row["max_amount"] is not None else float("inf"),
+                "discount": row["discount_percent"],
+                "valid_until": row.get("valid_until"),
+            }
+        )
+    return list(configs.values())
+
+
+def pick_price_for_segment(product: dict, segment: str, fallback_base: float) -> float:
+    if segment == "distributore" and product.get("price_dist") is not None:
+        return float(product.get("price_dist"))
+    if segment == "rivenditore" and product.get("price_riv") is not None:
+        return float(product.get("price_riv"))
+    if segment == "rivenditore10" and product.get("price_riv10") is not None:
+        return float(product.get("price_riv10"))
+    return float(product.get("base_price") or fallback_base or 0)
+
+
+def compute_price_with_discounts(product: dict, customer_segment: str, quantity: int) -> dict:
+    base_price = pick_price_for_segment(product, customer_segment, product.get("base_price", 0))
+    amount = base_price * max(1, quantity)
+    offer_id = None
+    extra = product.get("extra") or {}
+    if isinstance(extra, dict):
+        offer_id = extra.get("offer_id")
+
+    discount_value = 0.0
+    if offer_id:
+        for cfg in discount_rules_to_configs():
+            if cfg.get("id") != offer_id:
+                continue
+            rules = cfg.get("rules", {}).get(customer_segment, [])
+            for rule in rules:
+                max_amount = rule.get("max")
+                if max_amount is None:
+                    max_amount = float("inf")
+                if amount >= float(rule.get("min", 0)) and amount <= float(max_amount):
+                    discount_value = (rule.get("discount", 0) or 0) / 100.0
+                    break
+            if discount_value:
+                break
+
+    final_amount = amount * (1 - discount_value)
     return {
-        "sku": sku,
+        "sku": product.get("sku"),
         "base_price": base_price,
         "segment": customer_segment,
         "quantity": quantity,
-        "price": price,
+        "price": final_amount,
+        "discount_applied": discount_value * 100,
     }
 
 
@@ -85,33 +154,84 @@ async def health(request: web.Request) -> web.Response:
 
 async def auth_register(request: web.Request) -> web.Response:
     body = await request.json()
-    name = body.get("name") or body.get("email", "ospite")
+    if not body.get("accept_terms"):
+        return web.json_response({"status": "ko", "error": "terms"})
+
+    email = body.get("email")
+    if not email:
+        return web.json_response({"status": "ko", "error": "missing_email"})
+
+    if get_user_by_email(email):
+        return web.json_response({"status": "ko", "error": "exists"})
+
+    name = body.get("name") or email
+    temp_password = body.get("password") or "changeme"
+    password_hash = hash_password(temp_password)
     tier = "rivenditore10"
-    return web.json_response({"status": "ok", "name": name, "tier": tier})
+    create_user(
+        email=email,
+        password_hash=password_hash,
+        name=name,
+        tier=tier,
+        piva=body.get("piva") or "",
+        phone=body.get("phone") or "",
+    )
+    return web.json_response({"status": "ok", "tier": tier})
 
 
 async def auth_login(request: web.Request) -> web.Response:
     body = await request.json()
-    name = body.get("email", "utente")
-    tier = "rivenditore10"
-    return web.json_response({"status": "ok", "name": name, "tier": tier})
+    email = body.get("email", "").strip()
+    password = body.get("password", "")
+
+    ADMIN_EMAIL = "god@local"
+    ADMIN_PASS = "OrmaNet!2025$Light"
+    if email == ADMIN_EMAIL and password == ADMIN_PASS:
+        return web.json_response({"status": "ok", "name": "GOD ADMIN", "tier": "distributore", "token": None})
+
+    user = get_user_by_email(email)
+    if not user:
+        return web.json_response({"status": "ko"})
+
+    if user.get("password_hash") != hash_password(password):
+        return web.json_response({"status": "ko"})
+
+    token = create_session(user_id=user["id"], days_valid=30)
+    return web.json_response(
+        {
+            "status": "ok",
+            "name": user.get("name") or user.get("email"),
+            "tier": user.get("tier", "rivenditore10"),
+            "token": token,
+        }
+    )
+
+
+async def auth_validate_session(request: web.Request) -> web.Response:
+    token = request.headers.get("Authorization", "").replace("Bearer", "").strip()
+    if not token:
+        return web.json_response({"valid": False})
+    session = get_session(token)
+    if not session:
+        return web.json_response({"valid": False})
+    return web.json_response({"valid": True, "token": token})
 
 
 # ================== ECOMMERCE ==================
 
 async def pricing(request: web.Request) -> web.Response:
-    """
-    Endpoint usato dalla GUI:
-    POST /ecom/pricing
-    body: { sku, base_price, customer_segment, quantity }
-    """
     body = await request.json()
-    sku = body.get("sku", "UNKNOWN")
-    base_price = float(body.get("base_price", 0))
+    sku = body.get("sku")
     segment = body.get("customer_segment", "ospite")
     qty = int(body.get("quantity", 1))
-
-    result = compute_price(sku, base_price, segment, qty)
+    product = get_product_by_sku(sku) if sku else None
+    if not product:
+        product = {
+            "sku": sku,
+            "base_price": body.get("base_price", 0),
+            "extra": {"offer_id": body.get("offer_id")},
+        }
+    result = compute_price_with_discounts(product, segment, qty)
     return web.json_response(result)
 
 
@@ -122,7 +242,133 @@ async def order_draft(request: web.Request) -> web.Response:
 
 async def product_update(request: web.Request) -> web.Response:
     body = await request.json()
-    return web.json_response({"status": "ok", "product": body})
+    pricing = body.get("pricing", {})
+    prices = pricing.get("prices", {}) if isinstance(pricing, dict) else {}
+    product = {
+        "sku": body.get("sku") or str(uuid.uuid4()),
+        "name": body.get("name"),
+        "image_hd": body.get("image_hd"),
+        "image_thumb": body.get("image_thumb"),
+        "gallery": body.get("gallery") or [],
+        "description_html": body.get("description_html"),
+        "base_price": pricing.get("base_price"),
+        "unit": pricing.get("unit"),
+        "markup_riv10": pricing.get("markup_riv10"),
+        "markup_riv": pricing.get("markup_riv"),
+        "markup_dist": pricing.get("markup_dist"),
+        "price_riv10": prices.get("rivenditore10"),
+        "price_riv": prices.get("rivenditore"),
+        "price_dist": prices.get("distributore"),
+        "extra": body.get("extra") or {},
+    }
+    saved = upsert_product(product)
+    return web.json_response({"status": "ok", "product": saved})
+
+
+async def admin_clients_all(request: web.Request) -> web.Response:
+    return web.json_response({"clients": list_clients()})
+
+
+async def admin_clients_save(request: web.Request) -> web.Response:
+    body = await request.json()
+    saved = save_client(body)
+    return web.json_response(saved)
+
+
+async def admin_clients_delete(request: web.Request) -> web.Response:
+    body = await request.json()
+    if body.get("id"):
+        delete_id = int(body["id"])
+        delete_client(delete_id)
+    return web.json_response({"status": "ok"})
+
+
+async def admin_offers_all(request: web.Request) -> web.Response:
+    return web.json_response({"configs": discount_rules_to_configs()})
+
+
+async def admin_offers_save(request: web.Request) -> web.Response:
+    body = await request.json()
+    offer_id = body.get("id")
+    rules = body.get("rules") or {}
+    if not offer_id:
+        return web.json_response({"status": "ko", "error": "missing_offer_id"}, status=400)
+
+    for segment, items in rules.items():
+        clear_discount_rules_for_offer_segment(offer_id, segment)
+        for rule in items:
+            insert_discount_rule(
+                offer_id=offer_id,
+                segment=segment,
+                min_amount=float(rule.get("min", 0)),
+                max_amount=None if rule.get("max") in (None, "", float("inf")) else float(rule.get("max")),
+                discount_percent=float(rule.get("discount", 0)),
+                valid_until=rule.get("valid_until"),
+            )
+    return web.json_response({"status": "ok", "config": body})
+
+
+async def admin_products_all(request: web.Request) -> web.Response:
+    return web.json_response({"products": list_products()})
+
+
+async def admin_price_list_import(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+    file_part = None
+    async for part in reader:
+        if part.name == "file":
+            file_part = part
+            break
+    if not file_part:
+        return web.json_response({"status": "ko", "error": "missing_file"}, status=400)
+
+    file_data = await file_part.read()
+    workbook = load_workbook(BytesIO(file_data), data_only=True)
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    if not rows:
+        return web.json_response({"status": "ok", "products": []})
+
+    headers = []
+    if rows:
+        headers = [str(c).strip().lower() if c is not None else f"col{i}" for i, c in enumerate(rows[0])]
+
+    def value_from_row(row, key, default_index=None):
+        if key in headers:
+            idx = headers.index(key)
+            return row[idx]
+        if default_index is not None and default_index < len(row):
+            return row[default_index]
+        return None
+
+    products = []
+    for raw in rows[1:]:
+        if all(cell is None for cell in raw):
+            continue
+        sku = value_from_row(raw, "sku", 0) or uuid.uuid4().hex[:12]
+        name = value_from_row(raw, "name", 1) or value_from_row(raw, "prodotto", 1)
+        description = value_from_row(raw, "description", 2)
+        base_price = value_from_row(raw, "prezzo_base", 3) or value_from_row(raw, "base_price", 3) or 0
+        price_riv = value_from_row(raw, "price_riv", 4)
+        price_riv10 = value_from_row(raw, "price_riv10", 5)
+        price_dist = value_from_row(raw, "price_dist", 6)
+
+        product = {
+            "sku": str(sku),
+            "name": name or f"Prodotto {sku}",
+            "description_html": description,
+            "base_price": float(base_price or 0),
+            "price_riv": float(price_riv or 0) if price_riv is not None else None,
+            "price_riv10": float(price_riv10 or 0) if price_riv10 is not None else None,
+            "price_dist": float(price_dist or 0) if price_dist is not None else None,
+            "gallery": [],
+            "extra": {},
+        }
+        saved = upsert_product(product)
+        products.append(saved)
+
+    save_import_metadata(file_part.filename or "listino.xls", len(products))
+    return web.json_response({"status": "ok", "products": products})
 
 
 # ================== LLM LOCALE ==================
@@ -225,11 +471,21 @@ def create_app() -> web.Application:
     # AUTH (stub locale)
     app.router.add_post("/auth/register", auth_register)
     app.router.add_post("/auth/login", auth_login)
+    app.router.add_get("/auth/session/validate", auth_validate_session)
 
     # ECOM
     app.router.add_post("/ecom/pricing", pricing)
     app.router.add_post("/ecom/order_draft", order_draft)
     app.router.add_post("/ecom/product/update", product_update)
+
+    # ADMIN
+    app.router.add_get("/admin/clients/all", admin_clients_all)
+    app.router.add_post("/admin/clients/save", admin_clients_save)
+    app.router.add_post("/admin/clients/delete", admin_clients_delete)
+    app.router.add_get("/admin/offers/all", admin_offers_all)
+    app.router.add_post("/admin/offers/save", admin_offers_save)
+    app.router.add_get("/admin/products/all", admin_products_all)
+    app.router.add_post("/admin/price_list/import", admin_price_list_import)
 
     # LLM
     app.router.add_post("/llm/complete", llm_complete)
