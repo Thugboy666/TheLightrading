@@ -339,6 +339,7 @@
       align-items: center;
       gap: 4px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      will-change: transform;
     }
 
     .floating-badge {
@@ -2498,6 +2499,11 @@
   }
 
   function createFloatingTagForObject(mesh, text, opts = {}) {
+    if (floatingTags.has(mesh)) {
+      const prev = floatingTags.get(mesh);
+      prev?.remove();
+      floatingTags.delete(mesh);
+    }
     const el = document.createElement("div");
     el.className = "floating-tag";
     const label = document.createElement("span");
@@ -2592,7 +2598,7 @@
       });
     }
 
-    if (nataleNode && !floatingTags.has(nataleNode.mesh)) {
+    if (nataleNode) {
       createFloatingTagForObject(nataleNode.mesh, "Offerta Natale", {
         badge: "Promo",
         badgeState: "active",
@@ -2624,6 +2630,7 @@
     const rect = canvas.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
+    const tagEntries = [];
 
     floatingTags.forEach((el, mesh) => {
       if (!mesh || !mesh.position) return;
@@ -2631,11 +2638,47 @@
       mesh.getWorldPosition(vector);
       vector.project(camera);
 
-      const x = rect.left + (vector.x * 0.5 + 0.5) * width;
-      const y = rect.top + (-vector.y * 0.5 + 0.5) * height;
+      if (vector.z < -1 || vector.z > 1) {
+        el.style.display = "none";
+        return;
+      }
 
-      el.style.left = `${x}px`;
-      el.style.top = `${y - 30}px`;
+      el.style.display = "inline-flex";
+
+      const x = rect.left + (vector.x * 0.5 + 0.5) * width;
+      const y = rect.top + (-vector.y * 0.5 + 0.5) * height - 20;
+
+      tagEntries.push({
+        el,
+        x,
+        y,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+      });
+    });
+
+    tagEntries.sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+
+    for (let i = 0; i < tagEntries.length; i++) {
+      const entry = tagEntries[i];
+      let adjusted = true;
+      while (adjusted) {
+        adjusted = false;
+        for (let j = 0; j < i; j++) {
+          const prev = tagEntries[j];
+          const overlapX = Math.abs(entry.x - prev.x) < (entry.width + prev.width) / 2;
+          const overlapY = Math.abs(entry.y - prev.y) < (entry.height + prev.height) / 2;
+          if (overlapX && overlapY) {
+            entry.y = prev.y + (prev.height / 2 + entry.height / 2 + 6);
+            adjusted = true;
+          }
+        }
+      }
+    }
+
+    tagEntries.forEach((entry) => {
+      entry.el.style.left = `${entry.x}px`;
+      entry.el.style.top = `${entry.y}px`;
     });
   }
 
@@ -2776,6 +2819,7 @@
 
   function buildSystemView(system) {
     clearDynamicObjects();
+    clearFloatingTags();
     objects.length = 0;
     scene.rotation.set(0, 0, 0);
     targetRotX = 0;
@@ -2820,8 +2864,8 @@
           sub.texture || getTexturePathForCategory(sub) || "/assets/textures/category_placeholder.png";
 
         const sat = createIconSprite(subTexPath, 0.9);
-        const satAngle = angle + (jdx + 1) * 0.7;
-        const satRadius = orbitRadius * 1.18;
+        const satAngle = angle + (jdx - (cat.subcategories.length - 1) / 2) * 0.8;
+        const satRadius = orbitRadius * 1.22 + jdx * 0.05;
         sat.position.set(
           satRadius * Math.cos(satAngle),
           1.4,
@@ -2840,6 +2884,7 @@
 
   function buildPlanetView(category, subcategory) {
     clearDynamicObjects();
+    clearFloatingTags();
     objects.length = 0;
     scene.rotation.set(0, 0, 0);
     targetRotX = 0;
@@ -2885,6 +2930,7 @@
   }
 
   function clearDynamicObjects() {
+    clearFloatingTags();
     const keep = [];
     scene.children.forEach(obj => {
       if (
@@ -2898,7 +2944,6 @@
     scene.children.slice().forEach(obj => {
       if (!keep.includes(obj)) scene.remove(obj);
     });
-    clearFloatingTags();
   }
 
   addGalaxy();
@@ -2926,6 +2971,7 @@
 
   function resetToGalaxy() {
     clearDynamicObjects();
+    clearFloatingTags();
     addGalaxy();
     addSystems();
     addNataleIcon();
