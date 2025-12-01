@@ -849,7 +849,7 @@ def main() -> None:
         port,
         LLM_BACKEND_URL,
     )
-    web.run_app(app, host=host, port=port)
+    web.run_app(app, host="127.0.0.1", port=8080)
 
 
 if __name__ == "__main__":
