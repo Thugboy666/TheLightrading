@@ -65,6 +65,7 @@
       max-width: 140px;
       height: auto;
       display: block;
+      cursor: pointer;
     }
     #brand-sub {
       font-size: 10px;
@@ -506,7 +507,9 @@
   <!-- TOP BAR -->
   <div id="top-bar">
     <div id="brand">
-      <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" />
+      <a href="https://www.ormanet.it" target="_blank">
+        <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" />
+      </a>
       <div id="brand-sub">powered by thelight24</div>
       <div id="brand-title"></div>
     </div>
@@ -570,12 +573,6 @@
     <div id="nav-buttons">
       <button class="icon-btn" id="btn-up">
         <span>↑</span><span>Livello su</span>
-      </button>
-      <button class="icon-btn" id="btn-offer-prev">
-        <span>←</span><span>Indietro</span>
-      </button>
-      <button class="icon-btn" id="btn-offer-next">
-        <span>→</span><span>Avanti</span>
       </button>
     </div>
   </div>
@@ -1103,7 +1100,6 @@
 
   let cart = [];
   let currentProductPrice = 0;
-  let currentOfferIndex = 0;
 
   const canvas = document.getElementById("universe-canvas");
   const appEl = document.getElementById("app");
@@ -1129,9 +1125,6 @@
   const entityQtyInput = document.getElementById("entity-qty");
   const entityAdminActions = document.getElementById("entity-admin-actions");
   const btnAdmin = document.getElementById("btn-admin");
-
-  const btnOfferPrev = document.getElementById("btn-offer-prev");
-  const btnOfferNext = document.getElementById("btn-offer-next");
 
   const sheetRegister = document.getElementById("sheet-register");
   const sheetLogin = document.getElementById("sheet-login");
@@ -1233,8 +1226,6 @@
   document.getElementById("btn-cart-clear").addEventListener("click", () => { cart = []; updateCartUI(); });
   document.getElementById("btn-cart-checkout").addEventListener("click", checkoutCart);
   document.getElementById("btn-up").addEventListener("click", goUpOneLevel);
-  btnOfferPrev.addEventListener("click", () => navigateOffer(-1));
-  btnOfferNext.addEventListener("click", () => navigateOffer(1));
 
   adminTabClients.addEventListener("click", () => switchAdminTab("clients"));
   adminTabOffers.addEventListener("click", () => switchAdminTab("offers"));
@@ -2205,9 +2196,7 @@
   }
 
   function addSystems() {
-    const systemsToRender = universe.systems.length
-      ? [universe.systems[currentOfferIndex % universe.systems.length]]
-      : [];
+    const systemsToRender = universe.systems.length ? [universe.systems[0]] : [];
     systemsToRender.forEach((sys, idx) => {
       const size = 1.4;
       const geo = new THREE.BoxGeometry(size, size, size);
@@ -2771,12 +2760,6 @@
       resetToGalaxy();
       return;
     }
-  }
-
-  function navigateOffer(delta) {
-    if (!universe.systems.length) return;
-    currentOfferIndex = (currentOfferIndex + delta + universe.systems.length) % universe.systems.length;
-    resetToGalaxy();
   }
 
   // Mouse handlers
