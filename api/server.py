@@ -12,6 +12,7 @@ import json
 import httpx
 from aiohttp import web
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .db import (
     clear_discount_rules_for_offer_segment,
@@ -375,232 +376,163 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
       9: metodo pagamento preferito
      10: listino (distributore / rivenditore / rivenditore10)
     """
-    from aiohttp import web
-    import io
-    import json
-    from openpyxl import load_workbook
 
-    logger = request.app["logger"]
-
-    # Leggi form-data
     data = await request.post()
     upfile = data.get("file")
     if not upfile:
-        logger.warning("import_promo: nessun file ricevuto")
+        logger.warning("Import promo: missing file upload")
         return web.json_response(
-            {
-                "status": "error",
-                "code": "missing_file",
-                "message": "Nessun file caricato. Seleziona un file Excel (.xlsx).",
-            },
+            {"status": "error", "reason": "missing_file"},
             status=400,
         )
 
     filename = getattr(upfile, "filename", "") or ""
-    logger.info(f"import_promo: ricevuto file '{filename}'")
+    if not filename or "." not in filename:
+        logger.warning("Import promo: invalid filename")
+        return web.json_response(
+            {"status": "error", "reason": "invalid_filename"},
+            status=400,
+        )
 
-    # Leggi i byte del file
-    file_bytes = upfile.file.read()
+    ext = Path(filename).suffix.lower()
+    if ext not in {".xls", ".xlsx"}:
+        logger.warning("Import promo: unsupported extension %s", ext)
+        return web.json_response(
+            {"status": "error", "reason": "unsupported_extension"},
+            status=400,
+        )
+
+    if ext == ".xls":
+        logger.warning("Import promo: xls received, ask for xlsx")
+        return web.json_response(
+            {
+                "status": "error",
+                "reason": "xls_not_supported",
+                "message": "Salva il file in formato .xlsx e riprova.",
+            },
+            status=400,
+        )
+
+    try:
+        file_bytes = upfile.file.read()
+    except Exception as exc:
+        logger.exception("Import promo: unable to read file %s: %s", filename, exc)
+        return web.json_response(
+            {"status": "error", "reason": "read_error"},
+            status=400,
+        )
+
     if not file_bytes:
-        logger.warning("import_promo: file vuoto")
+        logger.warning("Import promo: uploaded file %s is empty", filename)
         return web.json_response(
-            {
-                "status": "error",
-                "code": "empty_file",
-                "message": "Il file caricato è vuoto.",
-            },
+            {"status": "error", "reason": "empty_file"},
             status=400,
         )
 
-    # Proviamo a caricare come XLSX con openpyxl
     try:
-        wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
-    except Exception as exc:
-        logger.exception(f"import_promo: errore load_workbook: {exc}")
+        wb = load_workbook(BytesIO(file_bytes), data_only=True)
+    except InvalidFileException:
+        logger.exception("Import promo: invalid Excel file %s", filename)
         return web.json_response(
-            {
-                "status": "error",
-                "code": "invalid_workbook",
-                "message": "Il file non è un Excel valido. Salvalo come .xlsx e riprova.",
-            },
+            {"status": "error", "reason": "invalid_excel"},
+            status=400,
+        )
+    except Exception as exc:
+        logger.exception("Import promo: error loading workbook %s: %s", filename, exc)
+        return web.json_response(
+            {"status": "error", "reason": "invalid_excel"},
             status=400,
         )
 
-    # Seleziona il primo foglio disponibile
-    sheet = None
+    if not wb.sheetnames:
+        logger.error("Import promo: workbook %s has no sheets", filename)
+        return web.json_response(
+            {"status": "error", "reason": "no_sheets"},
+            status=400,
+        )
+
+    sheet = wb[wb.sheetnames[0]]
+
     try:
-        sheet = wb.active or (wb.worksheets[0] if wb.worksheets else None)
+        rows = []
+        for row in sheet.iter_rows(values_only=True):
+            if not any(row):
+                continue
+            rows.append(row)
     except Exception as exc:
-        logger.exception(f"import_promo: errore selezione sheet: {exc}")
-        sheet = None
-
-    if sheet is None:
-        logger.warning("import_promo: nessun foglio di lavoro trovato nel file")
+        logger.exception("Import promo: error reading rows from %s: %s", filename, exc)
         return web.json_response(
-            {
-                "status": "error",
-                "code": "no_worksheet",
-                "message": "Il file Excel non contiene fogli di lavoro validi.",
-            },
+            {"status": "error", "reason": "invalid_excel"},
             status=400,
         )
 
-    # Leggi tutte le righe del foglio
-    try:
-        raw_rows = list(sheet.iter_rows(values_only=True))
-    except Exception as exc:
-        logger.exception(f"import_promo: errore iter_rows: {exc}")
+    if not rows:
+        logger.warning("Import promo: workbook %s has no data rows", filename)
         return web.json_response(
-            {
-                "status": "error",
-                "code": "read_error",
-                "message": "Impossibile leggere le righe dal file Excel.",
-            },
+            {"status": "error", "reason": "no_rows"},
             status=400,
         )
 
-    total_rows = len(raw_rows)
-    # Consideriamo valida qualsiasi riga che abbia almeno una cella non None
-    rows = [tuple(row) for row in raw_rows if any(cell is not None for cell in row)]
-    valid_rows = len(rows)
-
-    logger.info(
-        f"import_promo: righe totali nel foglio={total_rows}, righe non vuote={valid_rows}"
-    )
-
-    # Se proprio non c'è niente, restituiamo OK ma 0 importati
-    if valid_rows == 0:
-        logger.warning("import_promo: nessuna riga valida trovata nel file")
-        return web.json_response(
-            {
-                "status": "ok",
-                "imported": 0,
-                "updated": 0,
-                "message": "File letto correttamente ma nessuna riga dati valida trovata.",
-            },
-            status=200,
-        )
-
-    # Funzione helper locale per normalizzare stringhe
-    def _s(v):
-        if v is None:
-            return ""
-        return str(v).strip()
+    def _clean(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
 
     imported = 0
     updated = 0
 
-    db = request.app["db"]  # usa l'handle DB già presente nell'app
+    logger.info("Import promo: processing file %s (%d rows)", filename, len(rows))
 
-    # Logghiamo le prime 3 righe per debug
-    for i, r in enumerate(rows[:3]):
-        logger.info(f"import_promo: anteprima riga {i+1}: {r}")
-
-    # LOOP di import: inserisci/aggiorna in base a email o P.IVA
     for row in rows:
-        # Garantiamo almeno 11 colonne (padding con None)
         cols = list(row) + [None] * (11 - len(row))
-        tipo, rag_soc, piva, sdi, regime, indirizzo, email, telefono, source, pay_pref, listino = cols[:11]
+        (
+            tipo,
+            ragione_sociale,
+            piva,
+            sdi,
+            regime_fiscale,
+            indirizzo,
+            email,
+            telefono,
+            _source,
+            _payment_pref,
+            listino,
+        ) = cols[:11]
 
-        tipo = _s(tipo)
-        rag_soc = _s(rag_soc)
-        piva = _s(piva)
-        sdi = _s(sdi)
-        regime = _s(regime)
-        indirizzo = _s(indirizzo)
-        email = _s(email)
-        telefono = _s(telefono)
-        source = _s(source)
-        pay_pref = _s(pay_pref)
-        listino = _s(listino) or "rivenditore10"
+        ragione_sociale = _clean(ragione_sociale) or None
+        piva = _clean(piva) or None
+        email = _clean(email) or None
+        telefono = _clean(telefono) or None
+        listino = (_clean(listino) or "rivenditore10")
 
-        # Salta righe completamente inutili (nessun nome e nessuna email e nessuna P.IVA)
-        if not rag_soc and not email and not piva:
+        if not email and not piva:
+            logger.debug("Import promo: skipping row without email and piva: %s", row)
             continue
 
-        # Determina chiave di matching (email preferita, altrimenti P.IVA)
-        key_email = email.lower() if email else None
-        key_piva = piva if piva else None
+        client_data = {
+            "id": None,
+            "ragione_sociale": ragione_sociale,
+            "piva": piva,
+            "email": email,
+            "telefono": telefono,
+            "listino": listino,
+            "stato": "attivo",
+            "note": "",
+            "promo_enabled": 1,
+            "promo_points": 0,
+            "promo_ticket_code": None,
+        }
 
-        # Cerca cliente esistente
-        existing = None
-        if key_email:
-            existing = db.fetch_one(
-                "SELECT * FROM clients WHERE LOWER(email) = LOWER(?)",
-                (key_email,),
-            )
-        if not existing and key_piva:
-            existing = db.fetch_one(
-                "SELECT * FROM clients WHERE piva = ?",
-                (key_piva,),
-            )
-
+        existing = find_client_by_email_or_piva(email, piva)
         if existing:
-            # UPDATE
-            db.execute(
-                """
-                UPDATE clients
-                   SET tipo = COALESCE(?, tipo),
-                       ragione_sociale = COALESCE(?, ragione_sociale),
-                       piva = COALESCE(?, piva),
-                       sdi = COALESCE(?, sdi),
-                       regime_fiscale = COALESCE(?, regime_fiscale),
-                       indirizzo = COALESCE(?, indirizzo),
-                       email = COALESCE(?, email),
-                       telefono = COALESCE(?, telefono),
-                       source = COALESCE(?, source),
-                       payment_pref = COALESCE(?, payment_pref),
-                       listino = COALESCE(?, listino),
-                       promo_enabled = 1
-                 WHERE id = ?
-                """,
-                (
-                    tipo or None,
-                    rag_soc or None,
-                    piva or None,
-                    sdi or None,
-                    regime or None,
-                    indirizzo or None,
-                    email or None,
-                    telefono or None,
-                    source or None,
-                    pay_pref or None,
-                    listino or None,
-                    existing["id"],
-                ),
-            )
+            client_data["id"] = existing.get("id")
+            save_client(client_data)
             updated += 1
         else:
-            # INSERT
-            db.execute(
-                """
-                INSERT INTO clients
-                    (tipo, ragione_sociale, piva, sdi, regime_fiscale,
-                     indirizzo, email, telefono, source, payment_pref,
-                     listino, promo_enabled, promo_points, promo_ticket_code)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL)
-                """,
-                (
-                    tipo or None,
-                    rag_soc or None,
-                    piva or None,
-                    sdi or None,
-                    regime or None,
-                    indirizzo or None,
-                    email or None,
-                    telefono or None,
-                    source or None,
-                    pay_pref or None,
-                    listino or None,
-                ),
-            )
+            save_client(client_data)
             imported += 1
-
-    db.commit()
-
-    logger.info(
-        f"import_promo: import concluso. Nuovi={imported}, aggiornati={updated}, righe_lette={valid_rows}"
-    )
 
     return web.json_response(
         {
