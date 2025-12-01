@@ -975,10 +975,10 @@
         <div class="html-preview" id="mini-offer-panel"></div>
       </div>
       <div id="admin-section-import" style="display:none;">
-        <h3 style="margin:4px 0;">Import Listino .XLS</h3>
+        <h3 style="margin:4px 0;">Import Listino .XLSX</h3>
         <div class="field">
-          <label>Carica file .xls (Office 97)</label>
-          <input id="price-list-file" type="file" accept=".xls" />
+          <label>Carica file .xlsx (Excel moderno)</label>
+          <input id="price-list-file" type="file" accept=".xlsx" />
           <small>Campi richiesti: nome/descrizione articolo, prezzo_distributore, prezzo_rivenditore, prezzo_rivenditore10, quantità_stock, status.</small>
         </div>
         <div class="sheet-actions">
@@ -989,8 +989,8 @@
       <div id="admin-section-promo" style="display:none;">
         <h3 style="margin:4px 0;">Promo Natale / Biglietto regalo</h3>
         <div class="field">
-          <label>Import anagrafiche aderenti (.xls)</label>
-          <input id="promo-clients-file" type="file" accept=".xls" />
+          <label>Import anagrafiche aderenti (.xlsx)</label>
+          <input id="promo-clients-file" type="file" accept=".xlsx" />
           <small>Ordine colonne senza intestazione: tipo, ragione sociale / nome, P.IVA, SDI/PEC, regime fiscale, indirizzo completo, email, telefono, come ci hai conosciuti, metodo di pagamento preferito, listino.</small>
         </div>
         <div class="sheet-actions" style="margin-top:4px;">
@@ -1717,7 +1717,12 @@
   async function uploadPriceList() {
     const file = priceListFileInput.files[0];
     if (!file) {
-      showToast("Seleziona un file .xls", false);
+      showToast("Seleziona un file .xlsx", false);
+      return;
+    }
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".xlsx")) {
+      showToast("Carica un file Excel in formato .xlsx (non .xls)", false);
       return;
     }
     const fd = new FormData();
@@ -1733,11 +1738,17 @@
 
   async function uploadPromoClients() {
     if (!promoClientsFileInput || !promoClientsFileInput.files.length) {
-      showToast("Seleziona un file .xls per importare", false);
+      showToast("Seleziona un file .xlsx per importare", false);
+      return;
+    }
+    const file = promoClientsFileInput.files[0];
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".xlsx")) {
+      showToast("Carica un file Excel in formato .xlsx (non .xls)", false);
       return;
     }
     const formData = new FormData();
-    formData.append("file", promoClientsFileInput.files[0]);
+    formData.append("file", file);
     try {
       const res = await fetch(BASE_URL + "/admin/clients/import_promo", {
         method: "POST",
