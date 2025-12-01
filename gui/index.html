@@ -586,8 +586,10 @@
         <div id="discount-sim-row">
           <label id="discount-sim-label"></label>
           <input id="discount-sim-input" type="number" min="0" step="1" placeholder="Inserisci importo" />
+          <button id="promo-discount-sim-btn" class="btn" style="display:none; font-size:10px;padding-inline:8px;">Calcola sconto</button>
           <div id="discount-sim-output"></div>
         </div>
+        <div id="entity-promo-summary"></div>
       </div>
       <div id="entity-admin-actions">
         <button class="btn secondary" id="btn-edit-product" style="font-size:10px;padding-inline:8px;">Modifica scheda</button>
@@ -1009,6 +1011,19 @@
       </div>
       <div id="admin-section-promo" style="display:none;">
         <h3 style="margin:4px 0;">Promo Natale / Biglietto regalo</h3>
+        <div class="two-cols">
+          <div class="field">
+            <label>Data inizio promo</label>
+            <input id="promo-start-date" type="date" />
+          </div>
+          <div class="field">
+            <label>Data fine promo</label>
+            <input id="promo-end-date" type="date" />
+          </div>
+        </div>
+        <div class="sheet-actions" style="margin-top:4px;">
+          <button class="btn" id="btn-promo-save-config">Salva config promo</button>
+        </div>
         <div class="field">
           <label>Import anagrafiche aderenti (.xlsx)</label>
           <input id="promo-clients-file" type="file" accept=".xlsx" />
@@ -1046,6 +1061,7 @@
           <button class="btn" id="btn-promo-add-points">Aggiungi punti</button>
         </div>
         <div class="html-preview" id="promo-summary"></div>
+        <div class="html-preview" id="promo-rules-static"></div>
       </div>
       <div class="sheet-actions">
         <button class="btn secondary" id="btn-admin-close">Chiudi</button>
@@ -1089,6 +1105,7 @@
     miniOfferEnabled: false,
   };
 
+  let promoConfig = { start_date: null, end_date: null };
   let priceList = [];
   let clients = [];
   const offersUniverse = [
@@ -1104,62 +1121,62 @@
           id: "batterie",
           name: "Batterie",
           tags: ["energia", "ricarica"],
-          subcategories: [{ id: "batterie-gift", name: "Gift Kit Energia" }]
+          subcategories: [{ id: "batterie-gift", name: "Gift energia" }]
         },
         {
           id: "cancelleria",
           name: "Cancelleria",
           tags: ["ufficio"],
-          subcategories: [{ id: "cancelleria-gift", name: "Box ufficio" }]
+          subcategories: [{ id: "cancelleria-gift", name: "Gift cancelleria" }]
         },
         {
           id: "carta-stampa",
           name: "Carta per stampa",
           tags: ["risme", "ufficio"],
-          subcategories: [{ id: "carta-gift", name: "Pacco premium" }]
+          subcategories: [{ id: "carta-gift", name: "Gift carta" }]
         },
         {
           id: "consumabili-originali",
           name: "Consumabili originali",
           tags: ["toner", "inkjet", "originali"],
           offerId: "offerta-consumabili-originali",
-          subcategories: [{ id: "consumabili-gift", name: "Box regalo consumabili" }]
+          subcategories: [{ id: "consumabili-gift", name: "Gift consumabili" }]
         },
         {
           id: "elettronica",
           name: "Elettronica",
           tags: ["device", "pc", "monitor"],
-          subcategories: [{ id: "elettronica-gift", name: "Bundle tech" }]
+          subcategories: [{ id: "elettronica-gift", name: "Gift tech" }]
         },
         {
           id: "eliminacode",
           name: "Eliminacode",
           tags: ["gestione flussi"],
-          subcategories: [{ id: "eliminacode-gift", name: "Kit front-office" }]
+          subcategories: [{ id: "eliminacode-gift", name: "Gift front-office" }]
         },
         {
           id: "rotoli-termici",
           name: "Rotoli termici",
           tags: ["pos", "ricevute"],
-          subcategories: [{ id: "rotoli-gift", name: "Box rotoli" }]
+          subcategories: [{ id: "rotoli-gift", name: "Gift rotoli" }]
         },
         {
           id: "stampanti",
           name: "Stampanti",
           tags: ["laser", "inkjet"],
-          subcategories: [{ id: "stampanti-gift", name: "Bundle stampanti" }]
+          subcategories: [{ id: "stampanti-gift", name: "Gift stampanti" }]
         },
         {
           id: "storage",
           name: "Storage",
           tags: ["ssd", "hdd", "backup"],
-          subcategories: [{ id: "storage-gift", name: "Box storage" }]
+          subcategories: [{ id: "storage-gift", name: "Gift storage" }]
         },
         {
           id: "consumabili-remanufactured",
           name: "Remanufactured",
           tags: ["green", "remanufactured"],
-          subcategories: [{ id: "reman-gift", name: "Box eco" }]
+          subcategories: [{ id: "reman-gift", name: "Gift reman" }]
         }
       ]
     }
@@ -1204,9 +1221,12 @@
   const entityOfferBox = document.getElementById("entity-offer-box");
   const entityOfferTitle = document.getElementById("entity-offer-title");
   const entityOfferGift = document.getElementById("entity-offer-gift");
+  const entityPromoSummary = document.getElementById("entity-promo-summary");
   const discountSimLabel = document.getElementById("discount-sim-label");
   const discountSimInput = document.getElementById("discount-sim-input");
   const discountSimOutput = document.getElementById("discount-sim-output");
+  const discountSimRow = document.getElementById("discount-sim-row");
+  const promoDiscountSimBtn = document.getElementById("promo-discount-sim-btn");
   const entityQtyWrapper = document.getElementById("entity-qty-wrapper");
   const entityQtyInput = document.getElementById("entity-qty");
   const entityAdminActions = document.getElementById("entity-admin-actions");
@@ -1286,7 +1306,11 @@
   const promoClientPoints = document.getElementById("promo-client-points");
   const promoActionSelect = document.getElementById("promo-action-select");
   const btnPromoAddPoints = document.getElementById("btn-promo-add-points");
+  const btnPromoSaveConfig = document.getElementById("btn-promo-save-config");
+  const promoStartDateInput = document.getElementById("promo-start-date");
+  const promoEndDateInput = document.getElementById("promo-end-date");
   const promoSummaryBox = document.getElementById("promo-summary");
+  const promoRulesStatic = document.getElementById("promo-rules-static");
 
   const btnBack = document.getElementById("btn-back");
   const btnOpenLlm = document.getElementById("btn-open-llm");
@@ -1358,6 +1382,9 @@
   }
   if (btnPromoAddPoints) {
     btnPromoAddPoints.addEventListener("click", addPromoPoints);
+  }
+  if (btnPromoSaveConfig) {
+    btnPromoSaveConfig.addEventListener("click", savePromoConfig);
   }
   if (promoClientSelect) {
     promoClientSelect.addEventListener("change", () => {
@@ -1522,27 +1549,108 @@
     }
   }
 
-  function renderPromoSummary(summary) {
-    if (!summary) return;
-    if (promoClientPoints) {
-      promoClientPoints.value = summary.points ?? "";
-    }
-    if (!promoSummaryBox) return;
-    const tierLabel =
-      summary.tier === "max"
-        ? "biglietto fortunato"
-        : summary.tier === "tier2"
-          ? "2 premi disponibili"
-          : summary.tier === "tier1"
-            ? "1 premio disponibile"
-            : "base";
-    const prizes = (summary.prizes_available || []).map((p) => `<li>${p}</li>`).join("");
-    promoSummaryBox.innerHTML = `
-      <div><strong>Punti totali:</strong> ${summary.points || 0}</div>
-      <div><strong>Tier:</strong> ${tierLabel}</div>
-      <div><strong>Premi disponibili:</strong></div>
-      <ul>${prizes || '<li>Nessun premio disponibile</li>'}</ul>
+  function setPromoConfig(cfg = {}) {
+    promoConfig = {
+      start_date: cfg.start_date || null,
+      end_date: cfg.end_date || null,
+    };
+    if (promoStartDateInput) promoStartDateInput.value = promoConfig.start_date || "";
+    if (promoEndDateInput) promoEndDateInput.value = promoConfig.end_date || "";
+  }
+
+  function renderPromoRulesStatic() {
+    if (!promoRulesStatic) return;
+    promoRulesStatic.innerHTML = `
+      <p><strong>Azioni e punti:</strong></p>
+      <ul>
+        <li>Seguici sui social → 5 punti</li>
+        <li>Aggiungi il numero in rubrica per broadcast WhatsApp → 50 punti</li>
+        <li>Ordine con rigenerati → 100 punti</li>
+        <li>Raggiungi il fatturato medio mensile → 200 punti</li>
+        <li>Fattura più del tuo fatturato medio → 500 punti</li>
+        <li>Porta una nuova azienda alla registrazione → 1000 punti</li>
+      </ul>
+      <p><strong>Soglie:</strong></p>
+      <ul>
+        <li>350 pt → 1 premio</li>
+        <li>850 pt → 1 o 2 premi</li>
+        <li>Massimo punti → Biglietto fortunato</li>
+      </ul>
+      <p><strong>Biglietto fortunato:</strong> spedizione gratuita prime 2 settimane di gennaio, sconto massimo sul fatturato di gennaio, omaggi sui prodotti trattati + sconto minimo per 3 mesi sulla categoria trattata.</p>
     `;
+  }
+
+  function getPromoTierLabel(summary) {
+    if (!summary) return "base";
+    if (summary.tier === "max") return "biglietto fortunato";
+    if (summary.tier === "tier2") return "2 premi disponibili";
+    if (summary.tier === "tier1") return "1 premio disponibile";
+    return "base";
+  }
+
+  function buildPromoRightsText(summary = {}) {
+    const points = summary.points || 0;
+    const maxPoints = summary.max_points;
+    const reachedMax =
+      (typeof maxPoints === "number" && points >= maxPoints) ||
+      summary.tier === "max" ||
+      points >= 1000;
+    if (reachedMax) {
+      return "Hai diritto al biglietto fortunato: spedizione gratuita prime 2 settimane di gennaio, sconto massimo su fatturato di gennaio, omaggi prodotti che tratti + sconto minimo per 3 mesi sulla categoria che tratti.";
+    }
+    if (points >= 850) {
+      return "Hai diritto fino a 2 premi (soglia 850 pt)";
+    }
+    if (points >= 350) {
+      return "Hai diritto a 1 premio (soglia 350 pt)";
+    }
+    return "Accumula punti: a 350 pt ottieni 1 premio, a 850 pt fino a 2 premi, al massimo punti ricevi il biglietto fortunato.";
+  }
+
+  function getPromoPrizesHtml() {
+    return `
+      <ul>
+        <li>Spedizione gratuita sulle prime due settimane di gennaio</li>
+        <li>Sconto massimo sul fatturato di gennaio</li>
+        <li>Omaggi di prodotti che tratti</li>
+        <li>Biglietto fortunato: tutti i vantaggi (max 3) + sconto minimo per 3 mesi sulla categoria che tratti</li>
+      </ul>
+    `;
+  }
+
+  function renderPromoCardSummary(summary = {}) {
+    if (!entityPromoSummary) return;
+    const tierLabel = getPromoTierLabel(summary);
+    const rightsText = buildPromoRightsText(summary);
+    const points = summary.points || 0;
+    entityPromoSummary.innerHTML = `
+      <div><strong>Punti attuali:</strong> ${points}</div>
+      <div><strong>Tier:</strong> ${tierLabel}</div>
+      <div>${rightsText}</div>
+      <div><strong>Premi potenziali:</strong></div>
+      ${getPromoPrizesHtml()}
+    `;
+  }
+
+  function renderPromoSummary(summary) {
+    const safeSummary = summary || {};
+    if (promoClientPoints) {
+      promoClientPoints.value = safeSummary.points ?? "";
+    }
+    if (promoSummaryBox) {
+      const tierLabel = getPromoTierLabel(safeSummary);
+      const prizes = (safeSummary.prizes_available || []).map((p) => `<li>${p}</li>`).join("");
+      const rightsText = buildPromoRightsText(safeSummary);
+      promoSummaryBox.innerHTML = `
+        <div><strong>Punti totali:</strong> ${safeSummary.points || 0}</div>
+        <div><strong>Tier:</strong> ${tierLabel}</div>
+        <div><strong>Premi disponibili:</strong></div>
+        <ul>${prizes || '<li>Nessun premio disponibile</li>'}</ul>
+        <div>${rightsText}</div>
+        <div><strong>Soglie:</strong> 350 pt → 1 premio • 850 pt → 1 o 2 premi • massimo punti → biglietto fortunato</div>
+      `;
+    }
+    renderPromoCardSummary(safeSummary);
   }
 
   async function fetchPromoSummary(clientId) {
@@ -1555,6 +1663,37 @@
       renderPromoSummary(summary);
     } catch (e) {
       console.error("Errore fetchPromoSummary", e);
+    }
+  }
+
+  async function loadPromoConfig() {
+    try {
+      const res = await fetch(BASE_URL + "/admin/promo/config", { headers: buildAuthHeaders() });
+      if (!res.ok) return;
+      const cfg = await res.json();
+      setPromoConfig(cfg || {});
+    } catch (e) {
+      console.warn("Config promo non disponibile", e);
+    }
+  }
+
+  async function savePromoConfig() {
+    const payload = {
+      start_date: promoStartDateInput?.value || null,
+      end_date: promoEndDateInput?.value || null,
+    };
+    setPromoConfig(payload);
+    try {
+      const res = await fetch(BASE_URL + "/admin/promo/config", {
+        method: "POST",
+        headers: buildAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Non salvata su backend");
+      showToast("Config promo aggiornata");
+    } catch (e) {
+      console.warn("Salvataggio config promo locale", e);
+      showToast("Config promo salvata solo lato frontend", false);
     }
   }
 
@@ -2303,6 +2442,13 @@
     return el;
   }
 
+  function resolveSubcategoryTagLabel(sub) {
+    if (!sub) return "Bundle";
+    const isGift = (sub.id || "").includes("gift");
+    if (isGift) return "Bundle regalo";
+    return sub.name || "Bundle";
+  }
+
   function addSnowflakes() {
     if (snowflakeGroup) return;
     const snowflakeMaterial = new THREE.SpriteMaterial({
@@ -2611,7 +2757,8 @@
         );
         scene.add(sat);
         objects.push({ type: "subcategory", ref: sub, mesh: sat });
-        createFloatingTagForObject(sat, sub.name || "Bundle");
+        const subLabel = resolveSubcategoryTagLabel(sub);
+        createFloatingTagForObject(sat, subLabel);
       });
     });
     addNataleIcon();
@@ -2869,9 +3016,9 @@
     if (entityImageWrapper) entityImageWrapper.style.display = "none";
 
     entityTypeEl.textContent = "MACRO OFFERTA";
-    entityTitleEl.textContent = "Offerta Natale Ormanet";
-    entityMetaEl.textContent =
-      "Clienti aderenti ottengono punti promo, biglietto regalo e condizioni dedicate.";
+    entityTitleEl.textContent = "Promo Natale – Biglietto regalo";
+    const promoStatus = isPromoActiveNow() ? "Promo attiva" : "Promo non attiva";
+    entityMetaEl.textContent = `${getPromoPeriodLabel()} • ${promoStatus}`;
     entityRatingEl.textContent = "";
     entityTagsEl.innerHTML = "";
 
@@ -2886,14 +3033,48 @@
 
     if (entityOfferBox) {
       entityOfferBox.style.display = "flex";
-      entityOfferTitle.textContent = "Promo Natale – Box regali & punti";
-      entityOfferGift.textContent =
-        "Se sei cliente aderente alla promo, ogni ordine nelle categorie coinvolte accumula punti e sblocca premi fisici.";
+      entityOfferTitle.textContent = "Simulatore risparmio Promo Natale";
+      if (discountSimRow) discountSimRow.style.display = "flex";
+      if (promoDiscountSimBtn) promoDiscountSimBtn.style.display = "inline-flex";
+      entityOfferGift.innerHTML =
+        `<p>Accumula punti con le azioni del Biglietto regalo e raggiungi le soglie: 350 pt → 1 premio, 850 pt → fino a 2 premi, massimo punti → biglietto fortunato.</p>${getPromoPrizesHtml()}`;
       discountSimLabel.textContent =
-        "Inserisci l’importo ordine per capire quanto ti conviene sfruttare le soglie sconto configurate.";
+        "Inserisci il fatturato previsto/mensile per stimare lo sconto configurato per la Promo Natale.";
       discountSimInput.value = "";
       discountSimOutput.textContent = "";
     }
+
+    if (promoDiscountSimBtn) {
+      promoDiscountSimBtn.onclick = computePromoNataleDiscount;
+    }
+    if (discountSimInput) {
+      discountSimInput.oninput = null;
+      discountSimInput.onchange = null;
+    }
+
+    const promoClient = getCurrentClientRecord();
+    const isPromoClient = currentUser.logged && promoClient?.promo_enabled;
+
+    if (!isPromoClient) {
+      if (entityPromoSummary) {
+        entityPromoSummary.innerHTML =
+          "<p>Per partecipare alla promo Natale devi essere cliente promo registrato. Contatta Ormanet o il tuo referente commerciale.</p>" +
+          getPromoPrizesHtml();
+      }
+      if (discountSimRow) discountSimRow.style.display = "none";
+      if (promoDiscountSimBtn) promoDiscountSimBtn.style.display = "none";
+      if (discountSimInput) discountSimInput.disabled = true;
+      discountSimOutput.textContent = "";
+      return;
+    }
+
+    if (discountSimInput) discountSimInput.disabled = false;
+    renderPromoCardSummary({
+      points: promoClient.promo_points || 0,
+      tier: promoClient.promo_ticket_code || promoClient.promo_ticket || "base",
+      max_points: promoClient.promo_max_points,
+    });
+    fetchPromoSummary(promoClient.id);
   }
 
   function findOfferTitle(offerId) {
@@ -2915,6 +3096,23 @@
     return `${dd}/${mm}/${yyyy}`;
   }
 
+  function getPromoPeriodLabel() {
+    const startLabel = promoConfig.start_date ? formatDateLabel(promoConfig.start_date) : "-";
+    const endLabel = promoConfig.end_date ? formatDateLabel(promoConfig.end_date) : "-";
+    return `Periodo promo: ${startLabel} → ${endLabel}`;
+  }
+
+  function isPromoActiveNow() {
+    const today = new Date();
+    const start = promoConfig.start_date ? new Date(promoConfig.start_date) : null;
+    const end = promoConfig.end_date ? new Date(promoConfig.end_date) : null;
+    const validStart = start && !Number.isNaN(start.getTime());
+    const validEnd = end && !Number.isNaN(end.getTime());
+    if (validStart && today < start) return false;
+    if (validEnd && today > end) return false;
+    return validStart || validEnd ? true : false;
+  }
+
   function getLatestValidUntil(rules = []) {
     let best = null;
     rules.forEach((r) => {
@@ -2931,6 +3129,8 @@
     const offerId = cat.offerId || cat.id;
     const cfg = findDiscountConfig(offerId);
 
+    if (discountSimRow) discountSimRow.style.display = "flex";
+    if (promoDiscountSimBtn) promoDiscountSimBtn.style.display = "none";
     discountSimInput.value = "";
     discountSimOutput.textContent = "";
 
@@ -2983,6 +3183,34 @@
 
     discountSimInput.oninput = computeSim;
     discountSimInput.onchange = computeSim;
+  }
+
+  function computePromoNataleDiscount() {
+    if (!currentUser.logged || !discountSimInput) return;
+    const offerId = "offerta-natale";
+    const cfg = findDiscountConfig(offerId);
+    const segment = currentUser?.tier || "ospite";
+    const rules = (cfg?.rules && cfg.rules[segment]) || [];
+    discountSimOutput.textContent = "";
+
+    if (!rules.length) {
+      discountSimOutput.textContent = "Nessuna fascia configurata per Promo Natale.";
+      return;
+    }
+
+    const amount = parseFloat(discountSimInput.value || "0");
+    if (!amount || !isFinite(amount)) {
+      discountSimOutput.textContent = "Inserisci un importo valido.";
+      return;
+    }
+    const rule = rules.find((r) => amount >= r.min && amount <= (r.max === Infinity ? amount : r.max));
+    if (!rule) {
+      discountSimOutput.textContent = "Importo non rientra in nessuna fascia Promo Natale.";
+      return;
+    }
+    const saved = amount * (rule.discount / 100);
+    const final = amount - saved;
+    discountSimOutput.textContent = `Con un fatturato di ${formatEuro(amount)} risparmi ${rule.discount}% = ${formatEuro(saved)} (paghi ${formatEuro(final)}) grazie alla Promo Natale.`;
   }
 
   function showCategoryCard(system, cat) {
@@ -3254,15 +3482,21 @@
     try {
       restoreSessionFromStorage();
       const authHeaders = buildAuthHeaders();
-      const [offersRes, clientsRes, productsRes] = await Promise.all([
+      const promoCfgPromise = fetch(BASE_URL + "/admin/promo/config", { headers: authHeaders }).catch(() => null);
+      const [offersRes, clientsRes, productsRes, promoCfgRes] = await Promise.all([
         fetch(BASE_URL + "/admin/offers/all", { headers: authHeaders }),
         fetch(BASE_URL + "/admin/clients/all", { headers: authHeaders }),
-        fetch(BASE_URL + "/admin/products/all", { headers: authHeaders })
+        fetch(BASE_URL + "/admin/products/all", { headers: authHeaders }),
+        promoCfgPromise
       ]);
 
       const offersJson = await offersRes.json();
       const clientsJson = await clientsRes.json();
       const productsJson = await productsRes.json();
+      if (promoCfgRes && promoCfgRes.ok) {
+        const promoCfgJson = await promoCfgRes.json();
+        setPromoConfig(promoCfgJson || {});
+      }
 
       discountConfigs = (offersJson.configs || []).map((cfg) => {
         const normalized = { ...cfg, rules: {} };
@@ -3299,6 +3533,7 @@
     BASE_URL,
     openProductEditor
   };
+  renderPromoRulesStatic();
   bootstrapUniverse();
 </script>
 </body>
