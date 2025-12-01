@@ -370,9 +370,44 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
         return web.json_response({"status": "ko", "error": "missing_file"}, status=400)
 
     file_data = await file_part.read()
-    workbook = load_workbook(BytesIO(file_data), data_only=True)
-    sheet = workbook.active
-    rows = list(sheet.iter_rows(values_only=True))
+    try:
+        # prova a caricare il workbook .xlsx
+        wb = load_workbook(BytesIO(file_data), data_only=True)
+    except Exception as e:
+        logger.exception("Errore load_workbook per import_promo")
+        return web.json_response(
+            {"status": "error", "error": "invalid_workbook"},
+            status=400,
+        )
+
+    # scegli un foglio valido:
+    sheet = wb.active
+    if sheet is None:
+        # se per qualche motivo non c'è active, usa il primo nome disponibile
+        sheet_names = list(wb.sheetnames or [])
+        if not sheet_names:
+            return web.json_response(
+                {"status": "error", "error": "no_worksheets"},
+                status=400,
+            )
+        sheet = wb[sheet_names[0]]
+
+    # estrai le righe, ignorando quelle completamente vuote
+    raw_rows = list(sheet.iter_rows(values_only=True))
+    rows = []
+    for row in raw_rows:
+        if not row:
+            continue
+        # tutte celle vuote?
+        if all((cell is None or (isinstance(cell, str) and not cell.strip())) for cell in row):
+            continue
+        rows.append(row)
+
+    if not rows:
+        return web.json_response(
+            {"status": "error", "error": "empty_sheet"},
+            status=400,
+        )
 
     imported = 0
     updated = 0
