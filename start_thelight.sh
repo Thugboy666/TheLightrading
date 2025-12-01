@@ -7,6 +7,7 @@ BASEDIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_DIR="$BASEDIR/run"
 LOG_DIR="$BASEDIR/logs"
 UI_INDEX="$BASEDIR/gui/index.html"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
@@ -19,12 +20,25 @@ fi
 echo "----- 🚀 START THELIGHT24 -----"
 echo "BASEDIR = $BASEDIR"
 
-# Attiva venv se esiste
-if [ -d "$BASEDIR/.venv" ]; then
-  echo "→ Attivo virtualenv .venv"
-  . "$BASEDIR/.venv/bin/activate"
-else
-  echo "⚠️  Nessuna .venv trovata in $BASEDIR (continuo con Python globale)"
+# Attiva/crea venv
+if [ ! -d "$BASEDIR/.venv" ]; then
+  echo "→ Creo virtualenv .venv"
+  "$PYTHON_BIN" -m venv "$BASEDIR/.venv" || {
+    echo "❌ Impossibile creare la virtualenv (.venv)."
+    exit 1
+  }
+fi
+
+echo "→ Attivo virtualenv .venv"
+. "$BASEDIR/.venv/bin/activate"
+
+if [ -f "$BASEDIR/requirements.txt" ]; then
+  echo "→ Aggiorno pip e installo dipendenze da requirements.txt"
+  python -m pip install --upgrade pip >/dev/null 2>&1 || true
+  python -m pip install -r "$BASEDIR/requirements.txt" || {
+    echo "❌ Installazione dipendenze fallita (controlla la rete o riprova)."
+    exit 1
+  }
 fi
 
 LLM_BIN="$BASEDIR/llm/llama.cpp/build/bin/llama-server"
