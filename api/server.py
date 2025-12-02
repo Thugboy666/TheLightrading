@@ -21,6 +21,7 @@ from .db import (
     create_user,
     add_promo_points,
     delete_client,
+    get_client_by_email,
     find_client_by_email_or_piva,
     get_product_by_sku,
     get_promo_summary,
@@ -29,6 +30,7 @@ from .db import (
     get_user_by_id,
     init_db,
     insert_discount_rule,
+    link_client_to_user_by_email,
     list_clients,
     list_discount_rules,
     list_products,
@@ -208,6 +210,27 @@ def compute_price_with_discounts(product: dict, customer_segment: str, quantity:
     }
 
 
+def client_payload_from_record(client: Optional[dict]) -> Optional[dict]:
+    if not client:
+        return None
+
+    return {
+        "id": client.get("id"),
+        "ragione_sociale": client.get("ragione_sociale"),
+        "piva": client.get("piva"),
+        "email": client.get("email"),
+        "telefono": client.get("telefono"),
+        "phone": client.get("telefono"),
+        "listino": client.get("listino"),
+        "stato": client.get("stato"),
+        "promo_enabled": bool(int(client.get("promo_enabled") or 0)),
+        "promo_points": int(client.get("promo_points") or 0),
+        "promo_ticket_code": client.get("promo_ticket_code"),
+        "user_id": client.get("user_id"),
+        "user_tier": client.get("user_tier"),
+    }
+
+
 # ================== HANDLER FRONTEND ==================
 
 async def ui_index(request: web.Request) -> web.Response:
@@ -253,6 +276,7 @@ async def auth_register(request: web.Request) -> web.Response:
         piva=body.get("piva") or "",
         phone=body.get("phone") or "",
     )
+    link_client_to_user_by_email(email, create_missing_client=True, default_listino=tier)
     log_event(
         "user_registered",
         email=email,
@@ -285,6 +309,7 @@ async def auth_login(request: web.Request) -> web.Response:
 
     expires_delta = timedelta(days=30) if remember else timedelta(hours=24)
     token = create_session_with_expiry(user_id=user["id"], expires_delta=expires_delta)
+    link_client_to_user_by_email(email)
     log_event(
         "user_login",
         email=email,
@@ -324,8 +349,22 @@ async def auth_me(request: web.Request) -> web.Response:
     if not user:
         return web.json_response({"status": "error", "message": "Utente non trovato"}, status=404)
 
+    client = link_client_to_user_by_email(user.get("email")) or get_client_by_email(
+        user.get("email")
+    )
+
     return web.json_response(
         {
+            "user": {
+                "email": user.get("email"),
+                "name": user.get("name"),
+                "tier": user.get("tier"),
+                "id": user.get("id"),
+                "piva": user.get("piva"),
+                "phone": user.get("phone"),
+            },
+            "client": client_payload_from_record(client),
+            # Chiavi legacy mantenute per compatibilità con il frontend esistente
             "email": user.get("email"),
             "name": user.get("name"),
             "tier": user.get("tier"),
@@ -428,12 +467,31 @@ async def product_update(request: web.Request) -> web.Response:
 
 
 async def admin_clients_all(request: web.Request) -> web.Response:
-    return web.json_response({"clients": list_clients()})
+    clients: list[dict] = []
+    for client in list_clients():
+        payload = client_payload_from_record(client) or {}
+        payload.update(
+            {
+                "note": client.get("note"),
+                "promo_last_update": client.get("promo_last_update"),
+                "created_at": client.get("created_at"),
+                "updated_at": client.get("updated_at"),
+            }
+        )
+        # Conserva i nomi legacy per compatibilità con il frontend admin
+        payload.setdefault("telefono", client.get("telefono"))
+        payload.setdefault("email", client.get("email"))
+        clients.append(payload)
+
+    return web.json_response({"clients": clients})
 
 
 async def admin_clients_save(request: web.Request) -> web.Response:
     body = await request.json()
     saved = save_client(body)
+    linked = link_client_to_user_by_email(saved.get("email"))
+    if linked:
+        saved["user_id"] = linked.get("user_id")
     log_event(
         "client_save",
         id=saved.get("id"),
@@ -506,8 +564,11 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
         )
 
     try:
-        file_bytes = upfile.file.read()
-    except Exception as exc:
+        if hasattr(upfile, "file"):
+            file_bytes = upfile.file.read()
+        else:
+            file_bytes = upfile.read()
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Import promo: unable to read file %s: %s", filename, exc)
         return web.json_response(
             {"status": "error", "reason": "read_error"},
@@ -529,7 +590,7 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
             {"status": "error", "reason": "invalid_excel"},
             status=400,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Import promo: error loading workbook %s: %s", filename, exc)
         return web.json_response(
             {"status": "error", "reason": "invalid_excel"},
@@ -551,7 +612,7 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
             if not any(row):
                 continue
             rows.append(row)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Import promo: error reading rows from %s: %s", filename, exc)
         return web.json_response(
             {"status": "error", "reason": "invalid_excel"},
@@ -572,65 +633,85 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
             return value.strip()
         return str(value).strip()
 
+    def _valid_email(value: Optional[str]) -> bool:
+        if not value:
+            return False
+        return "@" in value and "." in value.split("@")[-1]
+
     imported = 0
     updated = 0
+    processed = 0
+    errors: list[dict[str, Any]] = []
 
     logger.info("Import promo: processing file %s (%d rows)", filename, len(rows))
 
-    for row in rows:
-        cols = list(row) + [None] * (11 - len(row))
-        (
-            tipo,
-            ragione_sociale,
-            piva,
-            sdi,
-            regime_fiscale,
-            indirizzo,
-            email,
-            telefono,
-            _source,
-            _payment_pref,
-            listino,
-        ) = cols[:11]
+    for idx, row in enumerate(rows, start=1):
+        processed += 1
+        try:
+            cols = list(row) + [None] * (11 - len(row))
+            (
+                tipo,
+                ragione_sociale,
+                piva,
+                sdi,
+                regime_fiscale,
+                indirizzo,
+                email,
+                telefono,
+                _source,
+                _payment_pref,
+                listino,
+            ) = cols[:11]
 
-        ragione_sociale = _clean(ragione_sociale) or None
-        piva = _clean(piva) or None
-        email = _clean(email) or None
-        telefono = _clean(telefono) or None
-        listino = (_clean(listino) or "rivenditore10")
+            ragione_sociale = _clean(ragione_sociale) or None
+            piva = _clean(piva) or None
+            email = _clean(email) or None
+            telefono = _clean(telefono) or None
+            listino = (_clean(listino) or "rivenditore10")
 
-        if not email and not piva:
-            logger.debug("Import promo: skipping row without email and piva: %s", row)
-            continue
+            if not email and not piva:
+                errors.append({"row": idx, "error": "missing_email_and_piva"})
+                continue
 
-        client_data = {
-            "id": None,
-            "ragione_sociale": ragione_sociale,
-            "piva": piva,
-            "email": email,
-            "telefono": telefono,
-            "listino": listino,
-            "stato": "attivo",
-            "note": "",
-            "promo_enabled": 1,
-            "promo_points": 0,
-            "promo_ticket_code": None,
-        }
+            if email and not _valid_email(email):
+                errors.append({"row": idx, "error": "invalid_email", "email": email})
+                continue
 
-        existing = find_client_by_email_or_piva(email, piva)
-        if existing:
-            client_data["id"] = existing.get("id")
-            save_client(client_data)
-            updated += 1
-        else:
-            save_client(client_data)
-            imported += 1
+            client_data = {
+                "id": None,
+                "ragione_sociale": ragione_sociale,
+                "piva": piva,
+                "email": email,
+                "telefono": telefono,
+                "listino": listino,
+                "stato": "attivo",
+                "note": "",
+                "promo_enabled": 1,
+                "promo_points": 0,
+                "promo_ticket_code": None,
+            }
+
+            existing = find_client_by_email_or_piva(email, piva)
+            if existing:
+                client_data["id"] = existing.get("id")
+                save_client(client_data)
+                updated += 1
+            else:
+                save_client(client_data)
+                imported += 1
+
+            link_client_to_user_by_email(email)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Import promo: error processing row %s", idx)
+            errors.append({"row": idx, "error": "exception", "detail": str(exc)})
 
     return web.json_response(
         {
             "status": "ok",
+            "processed": processed,
             "imported": imported,
             "updated": updated,
+            "errors": errors,
         }
     )
 
