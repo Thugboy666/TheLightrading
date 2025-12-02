@@ -10,4 +10,11 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 INPUT_FILE="${1:-$PROJECT_ROOT/data/orders_latest.csv}"
 
-python3 "$PROJECT_ROOT/scripts/import_orders.py" --input "$INPUT_FILE" "${@:2}"
+# Usa il Python della virtualenv se esiste, altrimenti fallback su python3 di sistema
+if [ -x "$PROJECT_ROOT/.venv/bin/python" ]; then
+  PYTHON_BIN="$PROJECT_ROOT/.venv/bin/python"
+else
+  PYTHON_BIN="python3"
+fi
+
+"$PYTHON_BIN" "$PROJECT_ROOT/scripts/import_orders.py" --input "$INPUT_FILE" "${@:2}"

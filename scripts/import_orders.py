@@ -12,6 +12,14 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+import sys
+
+# Root del progetto TheLight24 (cartella che contiene "api", "scripts", "data", ecc.)
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Assicura che la root del progetto sia nel PYTHONPATH così "api" è importabile
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 from api.db import bulk_insert_orders, delete_orders_older_than, init_db
 
@@ -20,8 +28,9 @@ try:
 except Exception:  # pragma: no cover - import facoltativo in ambienti minimal
     load_workbook = None
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_INPUT = Path(os.environ.get("ORDERS_INPUT_FILE", BASE_DIR / "data" / "orders_latest.csv"))
+DEFAULT_INPUT = Path(
+    os.environ.get("ORDERS_INPUT_FILE", BASE_DIR / "data" / "orders_latest.csv")
+)
 
 
 def parse_date(value: Optional[str]) -> Optional[str]:
