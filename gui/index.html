@@ -3404,8 +3404,7 @@
     }
 
     entityOfferBox.style.display = "flex";
-    entityOfferTitle.textContent = `${cat.name} – Box regalo`;
-    entityOfferGift.textContent = `Box regalo dedicato collegato a ${findOfferTitle(offerId)}.`;
+    entityOfferTitle.textContent = `${cat.name} – Offerta dedicata`;
 
     const segment = currentUser?.tier || "ospite";
     const rules = (cfg.rules && cfg.rules[segment]) || [];
@@ -3499,12 +3498,10 @@
     entityAdminActions.style.display = "none";
     renderDiscountSimulator(cat);
     const promoClient = getCurrentClientRecord();
-    if (currentUser.logged && promoClient?.promo_enabled && entityOfferBox && entityOfferGift) {
-      const promoMsg = "Promo Natale attiva: accumuli punti con questa categoria. Controlla il tuo biglietto regalo nel pacco.";
+    if (currentUser.logged && promoClient?.promo_enabled && entityOfferBox) {
+      const promoMsg = "Promo Natale attiva: accumuli punti con questa categoria.";
       entityOfferBox.style.display = "flex";
-      if (!entityOfferGift.textContent.includes("Promo Natale")) {
-        entityOfferGift.textContent = `${entityOfferGift.textContent ? entityOfferGift.textContent + " " : ""}${promoMsg}`;
-      }
+      entityPromoSummary.textContent = promoMsg;
     }
   }
 
