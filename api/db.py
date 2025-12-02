@@ -60,6 +60,7 @@ def init_db() -> None:
                 promo_points INTEGER DEFAULT 0,
                 promo_ticket_code TEXT,
                 promo_last_update TEXT,
+                user_id INTEGER,
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -74,6 +75,7 @@ def init_db() -> None:
             ("promo_points", "ALTER TABLE clients ADD COLUMN promo_points INTEGER DEFAULT 0"),
             ("promo_ticket_code", "ALTER TABLE clients ADD COLUMN promo_ticket_code TEXT"),
             ("promo_last_update", "ALTER TABLE clients ADD COLUMN promo_last_update TEXT"),
+            ("user_id", "ALTER TABLE clients ADD COLUMN user_id INTEGER"),
         ]
         for col, stmt in migrations:
             if col not in existing_cols:
@@ -150,7 +152,9 @@ def init_db() -> None:
 
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     with get_db() as conn:
-        cur = conn.execute("SELECT * FROM users WHERE email = ?", (email,))
+        cur = conn.execute(
+            "SELECT * FROM users WHERE LOWER(email) = LOWER(?)", (email,)
+        )
         row = cur.fetchone()
         return row_to_dict(row) if row else None
 
@@ -241,13 +245,29 @@ def update_user_password(user_id: int, new_password_hash: str) -> None:
 
 def list_clients() -> List[Dict[str, Any]]:
     with get_db() as conn:
-        cur = conn.execute("SELECT * FROM clients ORDER BY id DESC")
+        cur = conn.execute(
+            """
+            SELECT c.*, u.email AS user_email, u.tier AS user_tier
+            FROM clients c
+            LEFT JOIN users u ON c.user_id = u.id
+            ORDER BY c.id DESC
+            """
+        )
         return [row_to_dict(r) for r in cur.fetchall()]
 
 
 def get_client_by_id(client_id: int) -> Optional[Dict[str, Any]]:
     with get_db() as conn:
         cur = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+        row = cur.fetchone()
+        return row_to_dict(row) if row else None
+
+
+def get_client_by_email(email: str) -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cur = conn.execute(
+            "SELECT * FROM clients WHERE LOWER(email) = LOWER(?)", (email,)
+        )
         row = cur.fetchone()
         return row_to_dict(row) if row else None
 
@@ -277,6 +297,7 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
     promo_points = int(data.get("promo_points", 0) or 0)
     promo_ticket_code = data.get("promo_ticket_code") or None
     promo_last_update = data.get("promo_last_update") or None
+    user_id = data.get("user_id")
     with get_db() as conn:
         if data.get("id"):
             existing = get_client_by_id(int(data["id"]))
@@ -286,7 +307,7 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
             conn.execute(
                 """
                 UPDATE clients
-                SET ragione_sociale = ?, piva = ?, email = ?, telefono = ?, listino = ?, stato = ?, note = ?, promo_enabled = ?, promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, updated_at = ?
+                SET ragione_sociale = ?, piva = ?, email = ?, telefono = ?, listino = ?, stato = ?, note = ?, promo_enabled = ?, promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, user_id = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -301,6 +322,7 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
                     promo_points,
                     promo_ticket_code,
                     promo_last_update,
+                    user_id,
                     now,
                     data.get("id"),
                 ),
@@ -308,8 +330,8 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
         else:
             cur = conn.execute(
                 """
-                INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, user_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get("ragione_sociale"),
@@ -323,6 +345,7 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
                     promo_points,
                     promo_ticket_code,
                     promo_last_update,
+                    user_id,
                     now,
                     now,
                 ),
@@ -334,6 +357,63 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
             cur = conn.execute("SELECT last_insert_rowid() AS id")
             data["id"] = cur.fetchone()["id"]
     return data
+
+
+def link_client_to_user_by_email(
+    email: Optional[str],
+    *,
+    create_missing_client: bool = False,
+    default_listino: str = "rivenditore10",
+) -> Optional[Dict[str, Any]]:
+    # Allinea un client all'utente con stessa email, opzionalmente creandolo
+    if not email:
+        return None
+
+    user = get_user_by_email(email)
+    if not user:
+        return None
+
+    client = get_client_by_email(email)
+    now = datetime.now(timezone.utc).isoformat()
+
+    with get_db() as conn:
+        if client:
+            if client.get("user_id") != user.get("id"):
+                conn.execute(
+                    "UPDATE clients SET user_id = ?, updated_at = ? WHERE id = ?",
+                    (user.get("id"), now, client.get("id")),
+                )
+                conn.commit()
+                client["user_id"] = user.get("id")
+            return client
+
+        if not create_missing_client:
+            return None
+
+        cur = conn.execute(
+            """
+            INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                None,
+                None,
+                email,
+                None,
+                user.get("tier") or default_listino,
+                "attivo",
+                "",
+                0,
+                0,
+                None,
+                None,
+                user.get("id"),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        return get_client_by_id(cur.lastrowid)
 
 
 def delete_client(client_id: int) -> None:
@@ -564,8 +644,10 @@ __all__ = [
     "get_session",
     "list_clients",
     "get_client_by_id",
+    "get_client_by_email",
     "find_client_by_email_or_piva",
     "save_client",
+    "link_client_to_user_by_email",
     "delete_client",
     "add_promo_points",
     "get_promo_summary",
