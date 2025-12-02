@@ -747,6 +747,64 @@
     </div>
   </div>
 
+  <!-- MODAL: ACCOUNT UTENTE -->
+  <div class="backdrop" id="sheet-account">
+    <div class="sheet">
+      <h2>Account</h2>
+      <p>Gestisci i dati del tuo account e la password.</p>
+
+      <div class="field">
+        <label>Email</label>
+        <input id="account-email" type="email" readonly />
+      </div>
+
+      <div class="field">
+        <label>Listino assegnato</label>
+        <input id="account-tier" type="text" readonly />
+      </div>
+
+      <div class="sheet-actions" style="justify-content:space-between;">
+        <button class="btn secondary" id="btn-account-close">Chiudi</button>
+        <div style="display:flex; gap:6px;">
+          <button class="btn secondary" id="btn-account-change-password">Cambia password</button>
+          <button class="btn" id="btn-account-logout">Logout</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RESET PASSWORD -->
+  <div class="backdrop" id="sheet-password-reset">
+    <div class="sheet">
+      <h2>Reset password</h2>
+      <p>Per sicurezza inserisci la password attuale e scegli una nuova password.</p>
+
+      <div class="field">
+        <label>Password attuale</label>
+        <input id="pwd-current" type="password" autocomplete="current-password" />
+      </div>
+
+      <div class="field">
+        <label>Nuova password</label>
+        <input id="pwd-new" type="password" autocomplete="new-password" />
+      </div>
+
+      <div class="field">
+        <label>Conferma nuova password</label>
+        <input id="pwd-new-confirm" type="password" autocomplete="new-password" />
+      </div>
+
+      <small style="font-size:10px;opacity:0.7;">
+        Suggerimento: usa almeno 8 caratteri, con lettere e numeri.
+      </small>
+
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-pwd-reset-cancel">Annulla</button>
+        <button class="btn" id="btn-pwd-reset-submit">Salva nuova password</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: PROMO PUNTI -->
   <div class="backdrop" id="sheet-promo-points">
     <div class="sheet">
@@ -1277,12 +1335,26 @@
 
   const sheetRegister = document.getElementById("sheet-register");
   const sheetLogin = document.getElementById("sheet-login");
+  const sheetAccount = document.getElementById("sheet-account");
+  const sheetPasswordReset = document.getElementById("sheet-password-reset");
   const sheetPromoPoints = document.getElementById("sheet-promo-points");
   const sheetCart = document.getElementById("sheet-cart");
   const cartListEl = document.getElementById("cart-list");
   const cartTotalEl = document.getElementById("cart-total");
   const btnCart = document.getElementById("btn-cart");
   const btnCartBack = document.getElementById("btn-cart-back");
+
+  const accountEmailInput = document.getElementById("account-email");
+  const accountTierInput = document.getElementById("account-tier");
+  const btnAccountClose = document.getElementById("btn-account-close");
+  const btnAccountLogout = document.getElementById("btn-account-logout");
+  const btnAccountChangePwd = document.getElementById("btn-account-change-password");
+
+  const pwdCurrentInput = document.getElementById("pwd-current");
+  const pwdNewInput = document.getElementById("pwd-new");
+  const pwdNewConfirmInput = document.getElementById("pwd-new-confirm");
+  const btnPwdResetCancel = document.getElementById("btn-pwd-reset-cancel");
+  const btnPwdResetSubmit = document.getElementById("btn-pwd-reset-submit");
 
   const sheetProduct = document.getElementById("sheet-product-editor");
   const sheetAdmin = document.getElementById("sheet-admin");
@@ -1381,9 +1453,32 @@
 
   document.getElementById("btn-register").addEventListener("click", () => showSheet(sheetRegister));
   document.getElementById("btn-reg-cancel").addEventListener("click", () => hideSheet(sheetRegister));
-  document.getElementById("btn-login").addEventListener("click", () => showSheet(sheetLogin));
+  document.getElementById("btn-login").addEventListener("click", () => {
+    if (currentUser.logged) {
+      accountEmailInput.value = currentUser.email || "";
+      accountTierInput.value = currentUser.tier || "rivenditore10";
+      showSheet(sheetAccount);
+    } else {
+      showSheet(sheetLogin);
+    }
+  });
   document.getElementById("btn-login-cancel").addEventListener("click", () => hideSheet(sheetLogin));
   document.getElementById("btn-logout").addEventListener("click", logout);
+  if (btnAccountClose) {
+    btnAccountClose.addEventListener("click", () => hideSheet(sheetAccount));
+  }
+  if (btnAccountLogout) {
+    btnAccountLogout.addEventListener("click", () => {
+      hideSheet(sheetAccount);
+      logout();
+    });
+  }
+  if (btnAccountChangePwd) {
+    btnAccountChangePwd.addEventListener("click", () => {
+      hideSheet(sheetAccount);
+      showSheet(sheetPasswordReset);
+    });
+  }
   if (btnPromoPointsClose) {
     btnPromoPointsClose.addEventListener("click", () => hideSheet(sheetPromoPoints));
   }
@@ -1494,6 +1589,28 @@
       updateUserUI();
     } catch (e) {
       console.error("Errore restoreSessionFromStorage", e);
+    }
+  }
+
+  async function validateSession() {
+    if (!currentUser.logged || !currentUser.token) return;
+    try {
+      const res = await fetch(BASE_URL + "/auth/me", {
+        headers: buildAuthHeaders()
+      });
+      if (!res.ok) {
+        clearSessionStorage();
+        currentUser = { logged: false, tier: "ospite", name: null, token: null, email: null };
+        updateUserUI();
+        return;
+      }
+      const me = await res.json();
+      currentUser.name = me.name || currentUser.name;
+      currentUser.tier = me.tier || currentUser.tier;
+      currentUser.email = me.email || currentUser.email;
+      updateUserUI();
+    } catch (e) {
+      console.warn("Impossibile validare la sessione, mantengo lo stato locale", e);
     }
   }
 
@@ -2143,12 +2260,69 @@
     }
   }
 
+  if (btnPwdResetCancel) {
+    btnPwdResetCancel.addEventListener("click", () => {
+      hideSheet(sheetPasswordReset);
+      pwdCurrentInput.value = "";
+      pwdNewInput.value = "";
+      pwdNewConfirmInput.value = "";
+    });
+  }
+
+  async function submitPasswordReset() {
+    const current = (pwdCurrentInput.value || "").trim();
+    const next = (pwdNewInput.value || "").trim();
+    const next2 = (pwdNewConfirmInput.value || "").trim();
+
+    if (!current || !next || !next2) {
+      showToast("Compila tutti i campi.", false);
+      return;
+    }
+    if (next.length < 8) {
+      showToast("La nuova password deve avere almeno 8 caratteri.", false);
+      return;
+    }
+    if (next !== next2) {
+      showToast("Le nuove password non coincidono.", false);
+      return;
+    }
+    if (!currentUser.logged) {
+      showToast("Devi essere loggato per cambiare password.", false);
+      return;
+    }
+
+    try {
+      const res = await fetch(BASE_URL + "/auth/change_password", {
+        method: "POST",
+        headers: buildAuthHeaders("application/json"),
+        body: JSON.stringify({
+          current_password: current,
+          new_password: next
+        })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== "ok") {
+        showToast(json.message || "Errore nel cambio password.", false);
+        return;
+      }
+      showToast("Password aggiornata con successo.");
+      pwdCurrentInput.value = "";
+      pwdNewInput.value = "";
+      pwdNewConfirmInput.value = "";
+      hideSheet(sheetPasswordReset);
+    } catch (e) {
+      console.error("Errore change_password", e);
+      showToast("Backend non raggiungibile.", false);
+    }
+  }
+
   async function submitLogin() {
     const payload = {
       email: document.getElementById("login-email").value,
       password: document.getElementById("login-password").value,
+      remember: document.getElementById("login-remember").checked
     };
-    const remember = document.getElementById("login-remember").checked;
+    const remember = payload.remember;
     if (!payload.email || !payload.password) {
       showToast("Email e password obbligatorie.", false);
       return;
@@ -2205,6 +2379,9 @@
 
   document.getElementById("btn-reg-submit").addEventListener("click", submitRegistration);
   document.getElementById("btn-login-submit").addEventListener("click", submitLogin);
+  if (btnPwdResetSubmit) {
+    btnPwdResetSubmit.addEventListener("click", submitPasswordReset);
+  }
 
   document.getElementById("btn-add-cart").addEventListener("click", () => {
     if (!currentUser.logged) {
@@ -3579,6 +3756,7 @@
   async function bootstrapUniverse() {
     try {
       restoreSessionFromStorage();
+      await validateSession();
       const authHeaders = buildAuthHeaders();
       const promoCfgPromise = fetch(BASE_URL + "/admin/promo/config", { headers: authHeaders }).catch(() => null);
       const [offersRes, clientsRes, productsRes, promoCfgRes] = await Promise.all([

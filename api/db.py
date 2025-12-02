@@ -191,6 +191,19 @@ def create_session(user_id: int, days_valid: int = 30) -> str:
     return token
 
 
+def create_session_with_expiry(user_id: int, expires_delta: timedelta) -> str:
+    token = os.urandom(16).hex()
+    now = datetime.now(timezone.utc)
+    expires = now + expires_delta
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token, user_id, now.isoformat(), expires.isoformat()),
+        )
+        conn.commit()
+    return token
+
+
 def get_session(token: str) -> Optional[Dict[str, Any]]:
     with get_db() as conn:
         cur = conn.execute("SELECT * FROM sessions WHERE token = ?", (token,))
@@ -205,6 +218,23 @@ def get_session(token: str) -> Optional[Dict[str, Any]]:
                 conn.commit()
                 return None
         return data
+
+
+def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = cur.fetchone()
+        return row_to_dict(row) if row else None
+
+
+def update_user_password(user_id: int, new_password_hash: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            (new_password_hash, now, user_id),
+        )
+        conn.commit()
 
 
 # ========== CLIENTS ========== #

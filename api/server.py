@@ -7,6 +7,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import bcrypt
 import hashlib
 import json
 import httpx
@@ -16,7 +17,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 
 from .db import (
     clear_discount_rules_for_offer_segment,
-    create_session,
+    create_session_with_expiry,
     create_user,
     add_promo_points,
     delete_client,
@@ -25,6 +26,7 @@ from .db import (
     get_promo_summary,
     get_session,
     get_user_by_email,
+    get_user_by_id,
     init_db,
     insert_discount_rule,
     list_clients,
@@ -32,6 +34,7 @@ from .db import (
     list_products,
     save_client,
     save_import_metadata,
+    update_user_password,
     upsert_product,
 )
 
@@ -116,7 +119,32 @@ def now_iso() -> str:
 
 
 def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def hash_password_legacy(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(plain_password: str, stored_hash: str) -> bool:
+    if not stored_hash:
+        return False
+    # Bcrypt hash
+    try:
+        if stored_hash.startswith("$2") and bcrypt.checkpw(
+            plain_password.encode("utf-8"), stored_hash.encode("utf-8")
+        ):
+            return True
+    except Exception:
+        # fallback to legacy checks
+        pass
+    # Legacy sha256 hash
+    if stored_hash == hash_password_legacy(plain_password):
+        return True
+    # Plain text fallback (vecchi import non hashati)
+    if stored_hash == plain_password:
+        return True
+    return False
 
 
 def discount_rules_to_configs() -> list[dict]:
@@ -238,6 +266,7 @@ async def auth_login(request: web.Request) -> web.Response:
     body = await request.json()
     email = body.get("email", "").strip()
     password = body.get("password", "")
+    remember = bool(body.get("remember", False))
 
     ADMIN_EMAIL = "god@local"
     ADMIN_PASS = "OrmaNet!2025$Light"
@@ -250,11 +279,12 @@ async def auth_login(request: web.Request) -> web.Response:
         log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
 
-    if user.get("password_hash") != hash_password(password):
+    if not verify_password(password, user.get("password_hash")):
         log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
 
-    token = create_session(user_id=user["id"], days_valid=30)
+    expires_delta = timedelta(days=30) if remember else timedelta(hours=24)
+    token = create_session_with_expiry(user_id=user["id"], expires_delta=expires_delta)
     log_event(
         "user_login",
         email=email,
@@ -279,6 +309,68 @@ async def auth_validate_session(request: web.Request) -> web.Response:
     if not session:
         return web.json_response({"valid": False})
     return web.json_response({"valid": True, "token": token})
+
+
+async def auth_me(request: web.Request) -> web.Response:
+    token = request.headers.get("Authorization", "").replace("Bearer", "").strip()
+    if not token:
+        return web.json_response({"status": "error", "message": "Missing token"}, status=401)
+
+    session = get_session(token)
+    if not session:
+        return web.json_response({"status": "error", "message": "Token non valido"}, status=401)
+
+    user = get_user_by_id(session.get("user_id"))
+    if not user:
+        return web.json_response({"status": "error", "message": "Utente non trovato"}, status=404)
+
+    return web.json_response(
+        {
+            "email": user.get("email"),
+            "name": user.get("name"),
+            "tier": user.get("tier"),
+            "id": user.get("id"),
+        }
+    )
+
+
+async def auth_change_password(request: web.Request) -> web.Response:
+    token = request.headers.get("Authorization", "").replace("Bearer", "").strip()
+    if not token:
+        return web.json_response({"status": "error", "message": "Token mancante"}, status=401)
+
+    session = get_session(token)
+    if not session:
+        return web.json_response({"status": "error", "message": "Sessione non valida"}, status=401)
+
+    user = get_user_by_id(session.get("user_id"))
+    if not user:
+        return web.json_response({"status": "error", "message": "Utente non trovato"}, status=404)
+
+    body = await request.json()
+    current_password = (body.get("current_password") or "").strip()
+    new_password = (body.get("new_password") or "").strip()
+
+    if not current_password or not new_password:
+        return web.json_response(
+            {"status": "error", "message": "Compila tutti i campi"}, status=400
+        )
+
+    if len(new_password) < 8:
+        return web.json_response(
+            {"status": "error", "message": "Nuova password troppo corta"}, status=400
+        )
+
+    if not verify_password(current_password, user.get("password_hash")):
+        return web.json_response(
+            {"status": "error", "message": "Password attuale non corretta."},
+            status=400,
+        )
+
+    new_hash = hash_password(new_password)
+    update_user_password(user_id=user["id"], new_password_hash=new_hash)
+    log_event("user_password_changed", email=user.get("email"))
+    return web.json_response({"status": "ok"})
 
 
 # ================== ECOMMERCE ==================
@@ -811,6 +903,8 @@ def create_app() -> web.Application:
     app.router.add_post("/auth/register", auth_register)
     app.router.add_post("/auth/login", auth_login)
     app.router.add_get("/auth/session/validate", auth_validate_session)
+    app.router.add_get("/auth/me", auth_me)
+    app.router.add_post("/auth/change_password", auth_change_password)
 
     # ECOM
     app.router.add_post("/ecom/pricing", pricing)
