@@ -29,6 +29,7 @@ from .db import (
     get_user_by_email,
     get_user_by_id,
     init_db,
+    list_orders,
     insert_discount_rule,
     link_client_to_user_by_email,
     list_clients,
@@ -296,7 +297,15 @@ async def auth_login(request: web.Request) -> web.Response:
     ADMIN_PASS = "OrmaNet!2025$Light"
     if email == ADMIN_EMAIL and password == ADMIN_PASS:
         log_event("admin_login", email=email, tier="distributore")
-        return web.json_response({"status": "ok", "name": "GOD ADMIN", "tier": "distributore", "token": None})
+        return web.json_response(
+            {
+                "status": "ok",
+                "name": "GOD ADMIN",
+                "tier": "distributore",
+                "token": None,
+                "is_admin": True,
+            }
+        )
 
     user = get_user_by_email(email)
     if not user:
@@ -322,6 +331,7 @@ async def auth_login(request: web.Request) -> web.Response:
             "name": user.get("name") or user.get("email"),
             "tier": user.get("tier", "rivenditore10"),
             "token": token,
+            "is_admin": bool(user.get("is_admin")),
         }
     )
 
@@ -362,6 +372,7 @@ async def auth_me(request: web.Request) -> web.Response:
                 "id": user.get("id"),
                 "piva": user.get("piva"),
                 "phone": user.get("phone"),
+                "is_admin": bool(user.get("is_admin")),
             },
             "client": client_payload_from_record(client),
             # Chiavi legacy mantenute per compatibilità con il frontend esistente
@@ -369,6 +380,7 @@ async def auth_me(request: web.Request) -> web.Response:
             "name": user.get("name"),
             "tier": user.get("tier"),
             "id": user.get("id"),
+            "is_admin": bool(user.get("is_admin")),
         }
     )
 
@@ -464,6 +476,43 @@ async def product_update(request: web.Request) -> web.Response:
     }
     saved = upsert_product(product)
     return web.json_response({"status": "ok", "product": saved})
+
+
+async def account_orders(request: web.Request) -> web.Response:
+    token = request.headers.get("Authorization", "").replace("Bearer", "").strip()
+    if not token:
+        return web.json_response({"status": "error", "message": "Token mancante"}, status=401)
+
+    session = get_session(token)
+    if not session:
+        return web.json_response({"status": "error", "message": "Sessione non valida"}, status=401)
+
+    user = get_user_by_id(session.get("user_id"))
+    if not user:
+        return web.json_response({"status": "error", "message": "Utente non trovato"}, status=404)
+
+    client = get_client_by_email(user.get("email"))
+    company_name = None
+    if client:
+        company_name = client.get("ragione_sociale") or client.get("name")
+
+    params = request.rel_url.query
+    status_param = params.get("status") or None
+    cause_param = params.get("cause") or None
+    date_from = params.get("date_from") or None
+    date_to = params.get("date_to") or None
+
+    orders = list_orders(
+        customer_email=user.get("email"),
+        customer_name=company_name,
+        status=status_param,
+        cause=cause_param,
+        date_from=date_from,
+        date_to=date_to,
+        include_all=bool(user.get("is_admin")),
+    )
+
+    return web.json_response({"orders": orders})
 
 
 async def admin_clients_all(request: web.Request) -> web.Response:
@@ -986,6 +1035,9 @@ def create_app() -> web.Application:
     app.router.add_get("/auth/session/validate", auth_validate_session)
     app.router.add_get("/auth/me", auth_me)
     app.router.add_post("/auth/change_password", auth_change_password)
+
+    # ORDERS
+    app.router.add_get("/account/orders", account_orders)
 
     # ECOM
     app.router.add_post("/ecom/pricing", pricing)

@@ -145,6 +145,28 @@ def init_db() -> None:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_number TEXT NOT NULL,
+                status TEXT,
+                cause TEXT,
+                customer_name TEXT,
+                customer_email TEXT,
+                order_date TEXT,
+                total_amount REAL,
+                external_id TEXT,
+                notes TEXT
+            )
+            """
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(LOWER(customer_email))"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)"
+        )
         conn.commit()
 
 
@@ -635,6 +657,128 @@ def save_import_metadata(file_name: str, total_products: int) -> None:
         conn.commit()
 
 
+# ========== ORDERS ========== #
+
+def delete_orders_older_than(days: int = 31) -> int:
+    """Rimuove gli ordini più vecchi di *days* giorni.
+
+    Utile per mantenere lo storico limitato all'ultimo mese come richiesto dal
+    gestionale.
+    """
+
+    threshold = datetime.now(timezone.utc) - timedelta(days=days)
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM orders WHERE date(order_date) < date(?)",
+            (threshold.date().isoformat(),),
+        )
+        conn.commit()
+        return cur.rowcount
+
+
+def bulk_insert_orders(orders: List[Dict[str, Any]]) -> int:
+    """Inserisce in blocco gli ordini importati dal gestionale."""
+
+    if not orders:
+        return 0
+
+    with get_db() as conn:
+        cur = conn.executemany(
+            """
+            INSERT INTO orders (
+                document_number,
+                status,
+                cause,
+                customer_name,
+                customer_email,
+                order_date,
+                total_amount,
+                external_id,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    o.get("document_number"),
+                    o.get("status"),
+                    o.get("cause"),
+                    o.get("customer_name"),
+                    o.get("customer_email"),
+                    o.get("order_date"),
+                    o.get("total_amount"),
+                    o.get("external_id"),
+                    o.get("notes"),
+                )
+                for o in orders
+            ],
+        )
+        conn.commit()
+        return cur.rowcount
+
+
+def list_orders(
+    *,
+    customer_email: Optional[str] = None,
+    customer_name: Optional[str] = None,
+    status: Optional[str] = None,
+    cause: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    include_all: bool = False,
+) -> List[Dict[str, Any]]:
+    """Ritorna gli ordini filtrati per utente o per admin.
+
+    - Se *include_all* è True, ignora i filtri su email/nome (visione admin).
+    - Altrimenti filtra per email (case-insensitive) e opzionalmente ragione
+      sociale (OR) se fornita.
+    """
+
+    query = "SELECT * FROM orders WHERE 1=1"
+    params: list[Any] = []
+    conditions: list[str] = []
+
+    if not include_all:
+        if customer_email:
+            email_clause = "LOWER(customer_email) = LOWER(?)"
+            params.append(customer_email)
+            if customer_name:
+                email_clause = "(LOWER(customer_email) = LOWER(?) OR LOWER(customer_name) = LOWER(?))"
+                params.append(customer_name)
+            conditions.append(email_clause)
+        elif customer_name:
+            conditions.append("LOWER(customer_name) = LOWER(?)")
+            params.append(customer_name)
+        else:
+            # Nessun riferimento utente, ritorniamo lista vuota
+            return []
+
+    if status:
+        conditions.append("LOWER(status) = LOWER(?)")
+        params.append(status)
+
+    if cause:
+        conditions.append("LOWER(cause) = LOWER(?)")
+        params.append(cause)
+
+    if date_from:
+        conditions.append("date(order_date) >= date(?)")
+        params.append(date_from)
+
+    if date_to:
+        conditions.append("date(order_date) <= date(?)")
+        params.append(date_to)
+
+    if conditions:
+        query += " AND " + " AND ".join(conditions)
+
+    query += " ORDER BY datetime(order_date) DESC, document_number DESC"
+
+    with get_db() as conn:
+        cur = conn.execute(query, tuple(params))
+        return [row_to_dict(r) for r in cur.fetchall()]
+
+
 __all__ = [
     "init_db",
     "get_db",
@@ -658,4 +802,7 @@ __all__ = [
     "get_product_by_sku",
     "list_products",
     "save_import_metadata",
+    "delete_orders_older_than",
+    "bulk_insert_orders",
+    "list_orders",
 ]
