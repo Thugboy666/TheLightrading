@@ -4,18 +4,18 @@ PROJECT_DIR="$HOME/TheLight24"
 PID_FILE="$PROJECT_DIR/.db_pid"
 
 if [ ! -f "$PID_FILE" ]; then
-    echo "Nessun file PID trovato. Forse sqlite-web non è attivo?"
+    echo "[WARN] Nessun PID salvato. Probabile che sqlite-web non sia attivo."
     exit 0
 fi
 
 PID=$(cat "$PID_FILE")
 
 if ps -p $PID > /dev/null 2>&1; then
-    echo "Chiudo sqlite-web (PID $PID)..."
+    echo "[INFO] Chiudo sqlite-web (PID $PID)..."
     kill -9 $PID
-    rm "$PID_FILE"
-    echo "DB chiuso correttamente."
 else
-    echo "Il processo salvato ($PID) non esiste più. Pulisco file PID."
-    rm "$PID_FILE"
+    echo "[WARN] Il processo (PID $PID) non esiste più."
 fi
+
+rm "$PID_FILE"
+echo "[OK] Pannello DB chiuso."
