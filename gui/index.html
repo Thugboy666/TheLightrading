@@ -631,6 +631,17 @@
       color: #000000;
       cursor: pointer;
     }
+
+    @media (max-width: 800px) {
+      .daily-offer-box.keyboard-open {
+        position: fixed !important;
+        bottom: 0 !important;
+        transform: translateY(-20vh);
+        max-height: 60vh;
+        overflow-y: auto;
+        z-index: 999999;
+      }
+    }
   </style>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
@@ -686,7 +697,7 @@
     <div id="location-path">Posizione: /</div>
     <div id="hint">Pinch/zoom o tap per esplorare. Tocca sistemi, stelle, pianeti e satelliti per scendere di livello.</div>
 
-    <div id="daily-coupon-box" class="coupon-box" style="display:none; margin-top:8px; padding:10px; border-radius:10px; border:1px solid #f97316; background:rgba(248,250,252,0.98); box-shadow:0 0 0 1px rgba(15,23,42,0.04); position:relative;">
+    <div id="daily-coupon-box" class="coupon-box daily-offer-box" style="display:none; margin-top:8px; padding:10px; border-radius:10px; border:1px solid #f97316; background:rgba(248,250,252,0.98); box-shadow:0 0 0 1px rgba(15,23,42,0.04); position:relative;">
       <button id="daily-coupon-close"
         type="button"
         style="position:absolute; top:4px; right:6px; border:none; background:transparent; cursor:pointer; font-size:12px; line-height:1; color:rgba(15,23,42,0.55);">
@@ -1866,8 +1877,26 @@
   let editingProduct = null;
   let editingClientId = null;
 
-  const showSheet = (el) => { el.style.display = "flex"; };
-  const hideSheet = (el) => { el.style.display = "none"; };
+  const getBadgeNodes = () => document.querySelectorAll(".orbit-badge, .badge-entity, .promo-badge");
+  const hideBadges = () => {
+    getBadgeNodes().forEach((b) => {
+      b.style.display = "none";
+    });
+  };
+  const showBadges = () => {
+    getBadgeNodes().forEach((b) => {
+      b.style.display = "";
+    });
+  };
+
+  const showSheet = (el) => {
+    el.style.display = "flex";
+    hideBadges();
+  };
+  const hideSheet = (el) => {
+    el.style.display = "none";
+    showBadges();
+  };
 
   document.getElementById("btn-register").addEventListener("click", () => showSheet(sheetRegister));
   document.getElementById("btn-reg-cancel").addEventListener("click", () => hideSheet(sheetRegister));
@@ -3101,43 +3130,78 @@
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "none";
     }
+    showBadges();
   }
 
   function showDailyCouponBox() {
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "block";
     }
+    hideBadges();
+  }
+
+  function isMobile() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
+  if (isMobile()) {
+    window.addEventListener("focusin", (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+        const box = document.querySelector(".daily-offer-box");
+        if (box) box.classList.add("keyboard-open");
+      }
+    });
+
+    window.addEventListener("focusout", () => {
+      const box = document.querySelector(".daily-offer-box");
+      if (box) box.classList.remove("keyboard-open");
+    });
   }
 
   function getUserPriceConfig() {
-    let rawTier = "";
-    if (currentClient && (currentClient.listino || currentClient.user_tier)) {
-      rawTier = currentClient.listino || currentClient.user_tier;
-    } else if (currentUser && (currentUser.list_type || currentUser.tier)) {
-      rawTier = currentUser.list_type || currentUser.tier;
-    }
-    const tier = String(rawTier || "").toLowerCase().trim();
+    // Priority: client.listino
+    let rawListino = "";
 
-    let cfg;
-    if (tier.includes("dist")) {
-      cfg = { priceField: "price_distributore", discountField: "discount_dist_percent" };
-    } else if (tier.includes("10") || tier.includes("riv10") || tier.includes("+10")) {
-      cfg = { priceField: "price_rivenditore10", discountField: "discount_riv10_percent" };
-    } else if (tier.includes("riv")) {
-      cfg = { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
-    } else {
-      cfg = { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
+    if (currentClient && currentClient.listino) {
+      rawListino = String(currentClient.listino).trim().toUpperCase();
+    } else if (currentUser && (currentUser.tier || currentUser.list_type)) {
+      rawListino = String(currentUser.tier || currentUser.list_type).trim().toUpperCase();
     }
 
-    console.debug("Daily offer – price config", {
-      rawTier,
-      tier,
-      client: currentClient,
-      user: currentUser,
-      cfg,
-    });
+    // Normalize
+    const L = rawListino.replace(/\s+/g, "").toUpperCase();
 
-    return cfg;
+    // Mapping EXACT from anagrafica:
+    if (L === "DI" || L === "DISTRIBUTORE" || L.includes("DIST")) {
+      return {
+        segment: "distributore",
+        priceField: "price_distributore",
+        discountField: "discount_dist_percent"
+      };
+    }
+
+    if (L === "RI+10%" || L === "RI+10" || L.includes("10")) {
+      return {
+        segment: "rivenditore10",
+        priceField: "price_rivenditore10",
+        discountField: "discount_riv10_percent"
+      };
+    }
+
+    if (L === "RI" || L.includes("RIV")) {
+      return {
+        segment: "rivenditore",
+        priceField: "price_rivenditore",
+        discountField: "discount_riv_percent"
+      };
+    }
+
+    // Fallback
+    return {
+      segment: "rivenditore",
+      priceField: "price_rivenditore",
+      discountField: "discount_riv_percent"
+    };
   }
 
   async function openDailyOfferForUser() {
@@ -3174,33 +3238,12 @@
 
       const minQty = typeof data.min_qty === "number" ? data.min_qty : data.min_qty ? Number(data.min_qty) : 1;
       const cfg = getUserPriceConfig();
-      let basePrice = null;
-      let discountPercent = 0;
 
-      if (product) {
-        const rawBase = product[cfg.priceField];
-        if (typeof rawBase === "number") {
-          basePrice = rawBase;
-        } else if (rawBase != null && rawBase !== "") {
-          const parsed = Number(rawBase);
-          basePrice = Number.isFinite(parsed) ? parsed : null;
-        }
-      }
+      const rawBase = product ? product[cfg.priceField] : null;
+      const basePrice = Number(rawBase || 0);
 
-      discountPercent = 0;
-      const rawDiscount = data[cfg.discountField];
-
-      if (typeof rawDiscount === "number") {
-        discountPercent = rawDiscount;
-      } else if (rawDiscount != null && rawDiscount !== "") {
-        const parsedDisc = Number(rawDiscount);
-        discountPercent = Number.isFinite(parsedDisc) ? parsedDisc : 0;
-      }
-
-      let finalPrice = null;
-      if (basePrice != null && discountPercent > 0) {
-        finalPrice = basePrice * (1 - discountPercent / 100);
-      }
+      const dailyDiscount = Number(data[cfg.discountField] || 0);
+      const finalPrice = basePrice * (1 - dailyDiscount / 100);
 
       if (dailyCouponCodeEl) {
         dailyCouponCodeEl.textContent = code;
@@ -3242,7 +3285,7 @@
           dailyPriceBox.style.display = "block";
           dailyPriceOriginalEl.textContent = formatEuro(basePrice);
           dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
-          dailyPricePercentEl.textContent = discountPercent > 0 ? `-${discountPercent.toFixed(0)}%` : "";
+          dailyPricePercentEl.textContent = "-" + dailyDiscount + "%";
         } else {
           dailyPriceBox.style.display = "none";
           dailyPriceOriginalEl.textContent = "";
