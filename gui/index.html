@@ -1877,16 +1877,12 @@
   let editingProduct = null;
   let editingClientId = null;
 
-  const getBadgeNodes = () => document.querySelectorAll(".orbit-badge, .badge-entity, .promo-badge");
+  const getBadgeNodes = () => document.querySelectorAll(".orbit-badge, .badge-entity, .promo-badge, .hub-badge, .entity-label, .offer-badge");
   const hideBadges = () => {
-    getBadgeNodes().forEach((b) => {
-      b.style.display = "none";
-    });
+    hide3DBadges();
   };
   const showBadges = () => {
-    getBadgeNodes().forEach((b) => {
-      b.style.display = "";
-    });
+    show3DBadges();
   };
 
   const showSheet = (el) => {
@@ -3127,6 +3123,7 @@
   }
 
   function hideDailyCouponBox() {
+    show3DBadges();
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "none";
     }
@@ -3316,6 +3313,7 @@
       }
 
       showDailyCouponBox();
+      hide3DBadges();
     } catch (err) {
       console.error("Errore lettura offerta daily", err);
       hideDailyCouponBox();
@@ -5024,6 +5022,20 @@
   };
   renderPromoRulesStatic();
   bootstrapUniverse();
+
+  function hide3DBadges() {
+    const badges = document.querySelectorAll(
+      ".orbit-badge, .badge-entity, .promo-badge, .hub-badge, .entity-label, .offer-badge"
+    );
+    badges.forEach(b => b.style.display = "none");
+  }
+
+  function show3DBadges() {
+    const badges = document.querySelectorAll(
+      ".orbit-badge, .badge-entity, .promo-badge, .hub-badge, .entity-label, .offer-badge"
+    );
+    badges.forEach(b => b.style.display = "");
+  }
 </script>
 </body>
 </html>
