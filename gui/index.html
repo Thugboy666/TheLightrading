@@ -448,13 +448,14 @@
     }
     .sheet {
       width: 100%;
-      max-height: 88dvh;
+      max-height: calc(100vh - 24px);
       background: #ffffff;
       border-radius: 18px 18px 0 0;
       padding: 10px 14px 14px;
       border: 1px solid var(--accent-color);
       overflow-y: auto;
       color: #000000;
+      overscroll-behavior: contain;
     }
     .sheet h2 {
       font-size: 14px;
@@ -1625,6 +1626,7 @@
   let priceList = [];
   let dailyOffer = null;
   let clients = [];
+  let macroOffers = [];
   const offersUniverse = [
     {
       id: "ormanet",
@@ -2866,20 +2868,119 @@
       : "";
   }
 
+  function extractMacroOffersFromResponse(data) {
+    const list = [];
+    if (!data || typeof data !== "object") return list;
+
+    const pushArray = (arr) => {
+      if (Array.isArray(arr)) {
+        arr.forEach((item) => list.push(item));
+      }
+    };
+
+    pushArray(data.offers);
+    pushArray(data.items);
+    pushArray(data.entities);
+
+    if (Array.isArray(data.systems)) {
+      data.systems.forEach((system) => {
+        list.push(system);
+        if (Array.isArray(system.categories)) {
+          system.categories.forEach((cat) => {
+            list.push({
+              id: cat.offerId || cat.id,
+              title: cat.name,
+              entity_id: cat.id,
+              entity_label: cat.name,
+            });
+          });
+        }
+      });
+    }
+
+    return list;
+  }
+
+  function getAllMacroOffers() {
+    const collectUniverseOffers = () => {
+      const list = [];
+      offersUniverse.forEach((system) => {
+        list.push({ id: system.id, title: system.title || system.name, entity_label: system.name });
+        (system.categories || []).forEach((cat) => {
+          const offerId = cat.offerId || cat.id;
+          list.push({
+            id: offerId,
+            title: cat.name,
+            entity_id: cat.id,
+            entity_label: cat.name,
+          });
+        });
+      });
+      return list;
+    };
+
+    const rawOffers = [
+      ...(Array.isArray(macroOffers) ? macroOffers : []),
+      ...collectUniverseOffers(),
+      ...discountConfigs.map((cfg) => ({ id: cfg.id, title: cfg.title || cfg.name || cfg.id })),
+    ];
+
+    const seen = new Set();
+    return rawOffers.filter((offer) => {
+      const value = offer?.id || offer?.entity_id || offer?.code || offer?.slug || offer?.offerId;
+      if (!value || seen.has(String(value))) return false;
+      seen.add(String(value));
+      return true;
+    });
+  }
+
   function ensureDiscountSelectFilled() {
     if (!discountOfferSelect) return;
-    const opts = [];
-    const known = new Set();
-    offersUniverse.forEach((o) => {
-      known.add(o.id);
-      opts.push(`<option value="${o.id}">${o.title || o.name}</option>`);
-    });
-    discountConfigs.forEach((cfg) => {
-      if (!known.has(cfg.id)) {
-        opts.push(`<option value="${cfg.id}">${cfg.id}</option>`);
+
+    const previousValue = discountOfferSelect.value;
+    const options = [];
+
+    const pushOffer = (offer) => {
+      const value =
+        offer?.id || offer?.entity_id || offer?.code || offer?.slug || offer?.offerId;
+      if (!value) return;
+
+      const labelParts = [];
+      if (offer?.title || offer?.name) labelParts.push(offer.title || offer.name);
+      if (offer?.entity_label || offer?.label || offer?.entity_id) {
+        labelParts.push(offer.entity_label || offer.label || offer.entity_id);
       }
-    });
-    discountOfferSelect.innerHTML = opts.join("");
+      const label = labelParts.filter(Boolean).join(" – ") || String(value);
+      options.push(`<option value="${value}">${label}</option>`);
+    };
+
+    getAllMacroOffers().forEach(pushOffer);
+
+    discountOfferSelect.innerHTML = "";
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Seleziona offerta/categoria...";
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    discountOfferSelect.appendChild(placeholder);
+
+    discountOfferSelect.insertAdjacentHTML("beforeend", options.join(""));
+
+    const targetValue = previousValue || (discountConfigs[0]?.id || "");
+    if (targetValue) {
+      const opt = Array.from(discountOfferSelect.options).find((o) => o.value === String(targetValue));
+      if (opt) {
+        opt.selected = true;
+        placeholder.selected = false;
+      }
+    } else {
+      const firstOption = Array.from(discountOfferSelect.options).find((o) => o.value);
+      if (firstOption) {
+        firstOption.selected = true;
+        placeholder.selected = false;
+      }
+    }
   }
 
   function renderPriceListImportStatus(isoString) {
@@ -4655,8 +4756,11 @@
   }
 
   function findOfferTitle(offerId) {
-    const offer = offersUniverse.find((o) => o.id === offerId);
-    return offer?.title || offer?.name || offerId;
+    const offer = getAllMacroOffers().find((o) => {
+      const value = o?.id || o?.entity_id || o?.code || o?.slug || o?.offerId;
+      return String(value) === String(offerId);
+    });
+    return offer?.title || offer?.name || offer?.entity_label || offer?.label || offerId;
   }
 
   function findDiscountConfig(offerId) {
@@ -4688,6 +4792,41 @@
     if (validStart && today < start) return false;
     if (validEnd && today > end) return false;
     return validStart || validEnd ? true : false;
+  }
+
+  function isMobileDevice() {
+    return window.innerWidth <= 768 || /Android|iPhone|iPad/i.test(navigator.userAgent);
+  }
+
+  function setupInputAutoScroll() {
+    if (!isMobileDevice()) return;
+
+    document.addEventListener("focusin", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") return;
+
+      const modal = target.closest(".sheet");
+      const scrollContainer = modal || document.scrollingElement || document.body;
+
+      setTimeout(() => {
+        try {
+          target.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        } catch (e) {
+          const rect = target.getBoundingClientRect();
+          const baseScroll = modal ? modal.scrollTop : window.scrollY;
+          const offset = rect.top + baseScroll - window.innerHeight / 3;
+          if (scrollContainer && typeof scrollContainer.scrollTo === "function") {
+            scrollContainer.scrollTo({ top: offset, behavior: "smooth" });
+          } else {
+            window.scrollTo(0, offset);
+          }
+        }
+      }, 150);
+    });
   }
 
   function getLatestValidUntil(rules = []) {
@@ -5072,6 +5211,7 @@
       const offersJson = await offersRes.json();
       const clientsJson = await clientsRes.json();
       const productsJson = await productsRes.json();
+      macroOffers = extractMacroOffersFromResponse(offersJson);
       if (promoCfgRes && promoCfgRes.ok) {
         const promoCfgJson = await promoCfgRes.json();
         setPromoConfig(promoCfgJson || {});
@@ -5135,6 +5275,9 @@
     BASE_URL,
     openProductEditor
   };
+  document.addEventListener("DOMContentLoaded", () => {
+    setupInputAutoScroll();
+  });
   renderPromoRulesStatic();
   bootstrapUniverse();
 
