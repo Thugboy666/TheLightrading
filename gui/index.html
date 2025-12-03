@@ -3166,31 +3166,28 @@
 
     const L = listino.replace(/\s+/g, "");
 
-    // DI = distributore
-    if (L === "DI" || L.includes("DIST")) {
+    if (L === "DI") {
       return {
         priceField: "price_distributore",
         discountField: "discount_dist_percent"
       };
     }
 
-    // RI+10% = rivenditore10
-    if (L === "RI+10%" || L === "RI+10" || L.includes("10")) {
+    if (L === "RI+10%" || L === "RI+10") {
       return {
         priceField: "price_rivenditore10",
         discountField: "discount_riv10_percent"
       };
     }
 
-    // RI = rivenditore
-    if (L === "RI" || L.includes("RIV")) {
+    if (L === "RI") {
       return {
         priceField: "price_rivenditore",
         discountField: "discount_riv_percent"
       };
     }
 
-    // fallback → rivenditore
+    // fallback sicuro: rivenditore
     return {
       priceField: "price_rivenditore",
       discountField: "discount_riv_percent"
@@ -3232,27 +3229,27 @@
       const minQty = typeof data.min_qty === "number" ? data.min_qty : data.min_qty ? Number(data.min_qty) : 1;
       const cfg = getUserPriceConfig();
 
-      // Base price from correct listino
-      let basePrice = 0;
+      // Prezzo standard del cliente dal suo listino
+      let prezzoStandard = 0;
       if (product && product[cfg.priceField] != null) {
         const parsed = Number(product[cfg.priceField]);
-        basePrice = Number.isFinite(parsed) ? parsed : 0;
+        prezzoStandard = Number.isFinite(parsed) ? parsed : 0;
       }
 
-      // Discount percentage from correct daily field
-      let discountPercent = 0;
+      // Percentuale di sconto daily del listino corretto
+      let scontoPercent = 0;
       if (data && data[cfg.discountField] != null) {
-        const parsedD = Number(data[cfg.discountField]);
-        discountPercent = Number.isFinite(parsedD) ? parsedD : 0;
+        const parsedDiscount = Number(data[cfg.discountField]);
+        scontoPercent = Number.isFinite(parsedDiscount) ? parsedDiscount : 0;
       }
 
-      // Compute final price
-      const finalPrice = basePrice * (1 - discountPercent / 100);
+      // Prezzo finale calcolato correttamente
+      const prezzoFinale = prezzoStandard * (1 - scontoPercent / 100);
 
-      // Update UI elements
-      dailyPriceOriginalEl.textContent = formatEuro(basePrice);
-      dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
-      dailyPricePercentEl.textContent = "-" + discountPercent.toFixed(0) + "%";
+      // Aggiornamento UI
+      dailyPriceOriginalEl.textContent = formatEuro(prezzoStandard);
+      dailyPriceDiscountedEl.textContent = formatEuro(prezzoFinale);
+      dailyPricePercentEl.textContent = "-" + scontoPercent + "%";
 
       if (dailyCouponCodeEl) {
         dailyCouponCodeEl.textContent = code;
@@ -3290,11 +3287,11 @@
       }
 
       if (dailyPriceBox && dailyPriceOriginalEl && dailyPriceDiscountedEl && dailyPricePercentEl) {
-        if (basePrice != null && finalPrice != null) {
+        if (prezzoStandard != null && prezzoFinale != null) {
           dailyPriceBox.style.display = "block";
-          dailyPriceOriginalEl.textContent = formatEuro(basePrice);
-          dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
-          dailyPricePercentEl.textContent = "-" + discountPercent + "%";
+          dailyPriceOriginalEl.textContent = formatEuro(prezzoStandard);
+          dailyPriceDiscountedEl.textContent = formatEuro(prezzoFinale);
+          dailyPricePercentEl.textContent = "-" + scontoPercent + "%";
         } else {
           dailyPriceBox.style.display = "none";
           dailyPriceOriginalEl.textContent = "";
