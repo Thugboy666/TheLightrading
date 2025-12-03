@@ -3159,46 +3159,42 @@
   }
 
   function getUserPriceConfig() {
-    // Priority: client.listino
-    let rawListino = "";
+    let listino = "";
 
     if (currentClient && currentClient.listino) {
-      rawListino = String(currentClient.listino).trim().toUpperCase();
-    } else if (currentUser && (currentUser.tier || currentUser.list_type)) {
-      rawListino = String(currentUser.tier || currentUser.list_type).trim().toUpperCase();
+      listino = String(currentClient.listino).trim().toUpperCase();
+    } else if (currentUser && (currentUser.list_type || currentUser.tier)) {
+      listino = String(currentUser.list_type || currentUser.tier).trim().toUpperCase();
     }
 
-    // Normalize
-    const L = rawListino.replace(/\s+/g, "").toUpperCase();
+    const L = listino.replace(/\s+/g, "");
 
-    // Mapping EXACT from anagrafica:
-    if (L === "DI" || L === "DISTRIBUTORE" || L.includes("DIST")) {
+    // DI = distributore
+    if (L === "DI" || L.includes("DIST")) {
       return {
-        segment: "distributore",
         priceField: "price_distributore",
         discountField: "discount_dist_percent"
       };
     }
 
+    // RI+10% = rivenditore10
     if (L === "RI+10%" || L === "RI+10" || L.includes("10")) {
       return {
-        segment: "rivenditore10",
         priceField: "price_rivenditore10",
         discountField: "discount_riv10_percent"
       };
     }
 
+    // RI = rivenditore
     if (L === "RI" || L.includes("RIV")) {
       return {
-        segment: "rivenditore",
         priceField: "price_rivenditore",
         discountField: "discount_riv_percent"
       };
     }
 
-    // Fallback
+    // fallback → rivenditore
     return {
-      segment: "rivenditore",
       priceField: "price_rivenditore",
       discountField: "discount_riv_percent"
     };
@@ -3239,11 +3235,27 @@
       const minQty = typeof data.min_qty === "number" ? data.min_qty : data.min_qty ? Number(data.min_qty) : 1;
       const cfg = getUserPriceConfig();
 
-      const rawBase = product ? product[cfg.priceField] : null;
-      const basePrice = Number(rawBase || 0);
+      // Base price from correct listino
+      let basePrice = 0;
+      if (product && product[cfg.priceField] != null) {
+        const parsed = Number(product[cfg.priceField]);
+        basePrice = Number.isFinite(parsed) ? parsed : 0;
+      }
 
-      const dailyDiscount = Number(data[cfg.discountField] || 0);
-      const finalPrice = basePrice * (1 - dailyDiscount / 100);
+      // Discount percentage from correct daily field
+      let discountPercent = 0;
+      if (data && data[cfg.discountField] != null) {
+        const parsedD = Number(data[cfg.discountField]);
+        discountPercent = Number.isFinite(parsedD) ? parsedD : 0;
+      }
+
+      // Compute final price
+      const finalPrice = basePrice * (1 - discountPercent / 100);
+
+      // Update UI elements
+      dailyPriceOriginalEl.textContent = formatEuro(basePrice);
+      dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
+      dailyPricePercentEl.textContent = "-" + discountPercent.toFixed(0) + "%";
 
       if (dailyCouponCodeEl) {
         dailyCouponCodeEl.textContent = code;
@@ -3285,7 +3297,7 @@
           dailyPriceBox.style.display = "block";
           dailyPriceOriginalEl.textContent = formatEuro(basePrice);
           dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
-          dailyPricePercentEl.textContent = "-" + dailyDiscount + "%";
+          dailyPricePercentEl.textContent = "-" + discountPercent + "%";
         } else {
           dailyPriceBox.style.display = "none";
           dailyPriceOriginalEl.textContent = "";
