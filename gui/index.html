@@ -142,15 +142,18 @@
     .overlay-active .badge-entity,
     .overlay-active .promo-badge,
     .overlay-active .hub-badge,
+    .overlay-active .entity-label,
+    .overlay-active .offer-badge,
     .overlay-active .label,
     .overlay-active .label-container,
-    .overlay-active .entity-label,
     .overlay-active .universe-label,
     .overlay-active .system-label,
     .overlay-active .planet-label,
     .overlay-active .star-label,
     .overlay-active .promo-tag,
-    .overlay-active .hub-tag {
+    .overlay-active .hub-tag,
+    .overlay-active .floating-tag,
+    .overlay-active .floating-badge {
       display: none !important;
     }
     .btn.secondary {
@@ -1892,12 +1895,31 @@
   let editingProduct = null;
   let editingClientId = null;
 
-  const getBadgeNodes = () => document.querySelectorAll(".orbit-badge, .badge-entity, .promo-badge, .hub-badge, .entity-label, .offer-badge");
+  const getBadgeNodes = () => document.querySelectorAll(
+    [
+      ".orbit-badge",
+      ".badge-entity",
+      ".promo-badge",
+      ".hub-badge",
+      ".entity-label",
+      ".offer-badge",
+      ".label",
+      ".label-container",
+      ".universe-label",
+      ".system-label",
+      ".planet-label",
+      ".star-label",
+      ".promo-tag",
+      ".hub-tag",
+      ".floating-tag",
+      ".floating-badge"
+    ].join(", ")
+  );
   const hideBadges = () => {
-    hide3DBadges();
+    nascondiBadge3D();
   };
   const showBadges = () => {
-    show3DBadges();
+    mostraBadge3D();
   };
 
   function enableOverlayMode() {
@@ -3148,20 +3170,19 @@
   }
 
   function hideDailyCouponBox() {
+    mostraBadge3D();
     disableOverlayMode();
-    show3DBadges();
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "none";
     }
-    showBadges();
   }
 
   function showDailyCouponBox() {
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "block";
     }
+    nascondiBadge3D();
     enableOverlayMode();
-    hideBadges();
   }
 
   function isMobile() {
@@ -3385,8 +3406,6 @@
       }
 
       showDailyCouponBox();
-      enableOverlayMode();
-      hide3DBadges();
     } catch (err) {
       console.error("Errore lettura offerta daily", err);
       hideDailyCouponBox();
@@ -5096,18 +5115,77 @@
   renderPromoRulesStatic();
   bootstrapUniverse();
 
+  function nascondiBadge3D() {
+    const selectors = [
+      ".orbit-badge",
+      ".badge-entity",
+      ".promo-badge",
+      ".hub-badge",
+      ".entity-label",
+      ".offer-badge",
+      ".label",
+      ".label-container",
+      ".universe-label",
+      ".system-label",
+      ".planet-label",
+      ".star-label",
+      ".promo-tag",
+      ".hub-tag",
+      ".floating-tag",
+      ".floating-badge"
+    ];
+
+    const elems = document.querySelectorAll(selectors.join(", "));
+    elems.forEach(el => {
+      if (el.dataset._prevDisplay === undefined) {
+        el.dataset._prevDisplay = el.style.display || "";
+      }
+      el.style.display = "none";
+    });
+
+    document.body.classList.add("overlay-active");
+  }
+
+  function mostraBadge3D() {
+    const selectors = [
+      ".orbit-badge",
+      ".badge-entity",
+      ".promo-badge",
+      ".hub-badge",
+      ".entity-label",
+      ".offer-badge",
+      ".label",
+      ".label-container",
+      ".universe-label",
+      ".system-label",
+      ".planet-label",
+      ".star-label",
+      ".promo-tag",
+      ".hub-tag",
+      ".floating-tag",
+      ".floating-badge"
+    ];
+
+    const elems = document.querySelectorAll(selectors.join(", "));
+    elems.forEach(el => {
+      const prev = el.dataset._prevDisplay;
+      if (prev !== undefined) {
+        el.style.display = prev;
+        delete el.dataset._prevDisplay;
+      } else {
+        el.style.display = "";
+      }
+    });
+
+    document.body.classList.remove("overlay-active");
+  }
+
   function hide3DBadges() {
-    const badges = document.querySelectorAll(
-      ".orbit-badge, .badge-entity, .promo-badge, .hub-badge, .entity-label, .offer-badge"
-    );
-    badges.forEach(b => b.style.display = "none");
+    nascondiBadge3D();
   }
 
   function show3DBadges() {
-    const badges = document.querySelectorAll(
-      ".orbit-badge, .badge-entity, .promo-badge, .hub-badge, .entity-label, .offer-badge"
-    );
-    badges.forEach(b => b.style.display = "");
+    mostraBadge3D();
   }
 </script>
 </body>
