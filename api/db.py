@@ -162,6 +162,14 @@ def init_db() -> None:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY,
                 user_id INTEGER,
@@ -743,6 +751,27 @@ def save_import_metadata(file_name: str, total_products: int) -> None:
         conn.commit()
 
 
+def set_meta_value(key: str, value: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO meta (key, value) VALUES (:key, :value)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            {"key": key, "value": value},
+        )
+        conn.commit()
+
+
+def get_meta_value(key: str) -> Optional[str]:
+    with get_db() as conn:
+        cur = conn.execute("SELECT value FROM meta WHERE key = :key", {"key": key})
+        row = cur.fetchone()
+        if not row:
+            return None
+        return row["value"]
+
+
 # ========== DAILY OFFER ========== #
 
 
@@ -939,6 +968,8 @@ __all__ = [
     "get_product_by_sku",
     "list_products",
     "save_import_metadata",
+    "set_meta_value",
+    "get_meta_value",
     "delete_orders_older_than",
     "bulk_insert_orders",
     "list_orders",

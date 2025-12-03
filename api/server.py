@@ -39,10 +39,12 @@ from .db import (
     list_products,
     save_client,
     save_import_metadata,
+    set_meta_value,
     save_daily_offer,
     update_user_password,
     upsert_product,
     delete_daily_offer,
+    get_meta_value,
 )
 
 # ================== CONFIG BASE ==================
@@ -1060,6 +1062,8 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
 
     products = list_products()
     products.sort(key=lambda p: (p.get("sku") or ""))
+    last_import_at = now_iso()
+    set_meta_value("price_list_last_import_at", last_import_at)
 
     return web.json_response(
         {
@@ -1067,8 +1071,16 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
             "updated": updated,
             "skipped": skipped,
             "products": products,
+            "last_import_at": last_import_at,
         }
     )
+
+
+@routes.get("/admin/price_list/status")
+@require_admin
+async def admin_price_list_status(request: web.Request) -> web.Response:
+    last_import_at = get_meta_value("price_list_last_import_at")
+    return web.json_response({"last_import_at": last_import_at})
 
 
 async def admin_product_save(request: web.Request) -> web.Response:
@@ -1340,6 +1352,7 @@ def create_app() -> web.Application:
     app.router.add_post("/admin/products/save", admin_product_save)
     app.router.add_delete("/admin/products/{sku}", admin_product_delete)
     app.router.add_post("/admin/price_list/import", admin_price_list_import)
+    app.router.add_get("/admin/price_list/status", admin_price_list_status)
     app.router.add_get("/admin/daily-offer", admin_daily_offer_get)
     app.router.add_post("/admin/daily-offer", admin_daily_offer_save)
     app.router.add_delete("/admin/daily-offer", admin_daily_offer_delete)

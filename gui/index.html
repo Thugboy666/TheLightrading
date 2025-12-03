@@ -1385,6 +1385,13 @@
         <div class="field">
           <label>Carica file .xlsx (Excel moderno)</label>
           <input id="price-list-file" type="file" accept=".xlsx" />
+        </div>
+
+        <div id="price-list-import-status" style="font-size:11px; margin-bottom:6px;">
+          Ultima importazione: <span id="price-list-import-status-label">Mai eseguita</span>
+        </div>
+
+        <div class="field">
           <small>
             Campi richiesti nel file .xlsx (intestazioni colonna, minuscolo/maiuscolo indifferente):<br />
             - <strong>codice</strong> (codice articolo interno, es: "codice", "codice_articolo", "codice articolo")<br />
@@ -1739,6 +1746,8 @@
   const btnPriceListUpload = document.getElementById("btn-price-list-upload");
   const priceListSearchInput = document.getElementById("price-list-search");
   const priceListTableWrapper = document.getElementById("price-list-table-wrapper");
+  const priceListImportStatus = document.getElementById("price-list-import-status");
+  const priceListImportStatusLabel = document.getElementById("price-list-import-status-label");
   const promoClientsFileInput = document.getElementById("promo-clients-file");
   const btnPromoClientsUpload = document.getElementById("btn-promo-clients-upload");
   const promoClientsPreview = document.getElementById("promo-clients-preview");
@@ -1887,15 +1896,17 @@
       const sku = btn.getAttribute("data-sku");
       if (!action || !sku) return;
 
-      const product = priceList.find((p) => String(p.sku) === String(sku));
-      if (!product) {
-        showToast("Prodotto non trovato in memoria.");
-        return;
-      }
-
       if (action === "edit-product") {
+        const product = priceList.find((p) => String(p.sku) === String(sku));
+        if (!product) {
+          showToast("Prodotto non trovato in memoria.");
+          return;
+        }
+
         if (window.TheLightUniverse && typeof window.TheLightUniverse.openProductEditor === "function") {
           window.TheLightUniverse.openProductEditor(product);
+        } else {
+          console.warn("openProductEditor non disponibile");
         }
         return;
       }
@@ -2668,6 +2679,48 @@
     discountOfferSelect.innerHTML = opts.join("");
   }
 
+  function renderPriceListImportStatus(isoString) {
+    if (!priceListImportStatus || !priceListImportStatusLabel) return;
+
+    if (!isoString) {
+      priceListImportStatusLabel.textContent = "Mai eseguita";
+      priceListImportStatusLabel.style.color = "#666";
+      priceListImportStatusLabel.style.fontWeight = "400";
+      return;
+    }
+
+    const now = new Date();
+    const last = new Date(isoString);
+    if (Number.isNaN(last.getTime())) {
+      priceListImportStatusLabel.textContent = "Data non disponibile";
+      priceListImportStatusLabel.style.color = "#666";
+      priceListImportStatusLabel.style.fontWeight = "400";
+      return;
+    }
+
+    const diffMs = now.getTime() - last.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    const dd = String(last.getDate()).padStart(2, "0");
+    const mm = String(last.getMonth() + 1).padStart(2, "0");
+    const yyyy = last.getFullYear();
+    const hh = String(last.getHours()).padStart(2, "0");
+    const mi = String(last.getMinutes()).padStart(2, "0");
+    const label = `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+    priceListImportStatusLabel.textContent = label;
+
+    if (diffDays <= 1) {
+      priceListImportStatusLabel.style.color = "#008000";
+      priceListImportStatusLabel.style.fontWeight = "700";
+    } else if (diffDays <= 2) {
+      priceListImportStatusLabel.style.color = "#ff8c00";
+      priceListImportStatusLabel.style.fontWeight = "700";
+    } else {
+      priceListImportStatusLabel.style.color = "#cc0000";
+      priceListImportStatusLabel.style.fontWeight = "700";
+    }
+  }
+
   async function addDiscountRule() {
     const offerId = discountOfferSelect.value;
     const segment = discountSegmentSelect.value;
@@ -2797,6 +2850,9 @@
       }
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
       refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
+      if (data && data.last_import_at) {
+        renderPriceListImportStatus(data.last_import_at);
+      }
       const msg = `Listino importato. Inseriti: ${data?.inserted || 0}, aggiornati: ${data?.updated || 0}, saltati: ${data?.skipped || 0}.`;
       showToast(msg);
     } catch (e) {
@@ -3392,8 +3448,8 @@
     imageHdInput.value = prod.image_hd || prod.image_url || prod.image || "";
     imageThumbInput.value = prod.image_thumb || "";
     galleryInput.value = (prod.gallery || []).join("\n");
-    descHtmlInput.value = prod.desc_html || prod.description_html || "";
-    descPreview.innerHTML = prod.desc_html || prod.description_html || "";
+    descHtmlInput.value = prod.desc_html || prod.description_html || prod.description || "";
+    descPreview.innerHTML = prod.desc_html || prod.description_html || prod.description || "";
 
     basePriceInput.value = prod.base_price != null ? prod.base_price : "";
     unitInput.value = prod.unit || "";
@@ -3467,6 +3523,7 @@
         priceList.push(saved);
       }
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+      refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
       showToast("Scheda prodotto aggiornata.");
     } catch (e) {
       console.error("Errore salvataggio prodotto", e);
@@ -4601,12 +4658,14 @@
       const authHeaders = buildAuthHeaders();
       const promoCfgPromise = fetch(BASE_URL + "/admin/promo/config", { headers: authHeaders }).catch(() => null);
       const dailyOfferPromise = fetch(BASE_URL + "/admin/daily-offer", { headers: authHeaders }).catch(() => null);
-      const [offersRes, clientsRes, productsRes, promoCfgRes, dailyOfferRes] = await Promise.all([
+      const priceListStatusPromise = fetch(BASE_URL + "/admin/price_list/status", { headers: authHeaders }).catch(() => null);
+      const [offersRes, clientsRes, productsRes, promoCfgRes, dailyOfferRes, priceListStatusRes] = await Promise.all([
         fetch(BASE_URL + "/admin/offers/all", { headers: authHeaders }),
         fetch(BASE_URL + "/admin/clients/all", { headers: authHeaders }),
         fetch(BASE_URL + "/admin/products/all", { headers: authHeaders }),
         promoCfgPromise,
-        dailyOfferPromise
+        dailyOfferPromise,
+        priceListStatusPromise
       ]);
 
       const offersJson = await offersRes.json();
@@ -4621,6 +4680,12 @@
         dailyOffer = dailyJson || null;
       } else {
         dailyOffer = null;
+      }
+      if (priceListStatusRes && priceListStatusRes.ok) {
+        const statusJson = await priceListStatusRes.json();
+        renderPriceListImportStatus(statusJson.last_import_at || null);
+      } else {
+        renderPriceListImportStatus(null);
       }
 
       discountConfigs = (offersJson.configs || []).map((cfg) => {
