@@ -1,8 +1,8 @@
+import io
 import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from io import BytesIO
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -154,6 +154,37 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     return False
 
 
+def normalize_header(value: str) -> str:
+    if not value:
+        return ""
+    return (
+        str(value)
+        .strip()
+        .lower()
+        .replace("à", "a")
+        .replace("è", "e")
+        .replace("é", "e")
+        .replace("ì", "i")
+        .replace("ò", "o")
+        .replace("ù", "u")
+    )
+
+
+def safe_float(value, default=0.0):
+    if value is None:
+        return default
+    s = str(value).strip()
+    if not s:
+        return default
+    s = s.replace(" ", "").replace("€", "")
+    if s.count(",") == 1 and s.count(".") == 0:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return default
+
+
 def safe_int(value, default=0):
     if value is None:
         return default
@@ -162,10 +193,11 @@ def safe_int(value, default=0):
         return default
 
     s_upper = s.upper()
-    if s_upper in {"N", "NA", "N/A", "ND", "NON DISPONIBILE", "-"}:
+    if s_upper in {"N", "NA", "N/A", "ND", "-", "NON DISPONIBILE"}:
         return default
-
-    s_clean = s.replace(" ", "").replace(".", "").replace(",", "")
+    s_clean = s.replace(" ", "")
+    if s_clean.replace(".", "").replace(",", "").isdigit():
+        s_clean = s_clean.replace(".", "").replace(",", "")
     try:
         return int(s_clean)
     except ValueError:
@@ -663,7 +695,7 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
         )
 
     try:
-        wb = load_workbook(BytesIO(file_bytes), data_only=True)
+        wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
     except InvalidFileException:
         logger.exception("Import promo: invalid Excel file %s", filename)
         return web.json_response(
@@ -867,113 +899,176 @@ async def admin_products_all(request: web.Request) -> web.Response:
             except Exception:
                 gallery = []
 
-        product = {
-            "sku": r.get("sku"),
-            "name": r.get("name"),
-            "desc_html": r.get("desc_html") or r.get("description_html"),
-            "image_hd": r.get("image_hd"),
-            "image_thumb": r.get("image_thumb"),
-            "gallery": gallery or [],
-            "base_price": r.get("base_price"),
-            "unit": r.get("unit"),
-            "markup_riv10": r.get("markup_riv10"),
-            "markup_riv": r.get("markup_riv"),
-            "markup_dist": r.get("markup_dist"),
-            "price_distributore": r.get("price_distributore") or r.get("price_dist"),
-            "price_rivenditore": r.get("price_rivenditore") or r.get("price_riv"),
-            "price_rivenditore10": r.get("price_rivenditore10") or r.get("price_riv10"),
-            "qty_stock": r.get("qty_stock"),
-            "discount_dist_percent": r.get("discount_dist_percent"),
-            "discount_riv_percent": r.get("discount_riv_percent"),
-            "discount_riv10_percent": r.get("discount_riv10_percent"),
-            "status": r.get("status"),
-            "codice": r.get("codice"),
-        }
-        products.append(product)
+        products.append(
+            {
+                "sku": r.get("sku"),
+                "codice": r.get("codice"),
+                "name": r.get("name"),
+                "desc_html": r.get("desc_html") or r.get("description_html"),
+                "image_hd": r.get("image_hd"),
+                "image_thumb": r.get("image_thumb"),
+                "gallery": gallery or [],
+                "base_price": r.get("base_price"),
+                "unit": r.get("unit"),
+                "markup_riv10": r.get("markup_riv10"),
+                "markup_riv": r.get("markup_riv"),
+                "markup_dist": r.get("markup_dist"),
+                "price_distributore": r.get("price_distributore")
+                or r.get("price_dist"),
+                "price_rivenditore": r.get("price_rivenditore") or r.get("price_riv"),
+                "price_rivenditore10": r.get("price_rivenditore10")
+                or r.get("price_riv10"),
+                "qty_stock": r.get("qty_stock"),
+                "discount_dist_percent": r.get("discount_dist_percent"),
+                "discount_riv_percent": r.get("discount_riv_percent"),
+                "discount_riv10_percent": r.get("discount_riv10_percent"),
+                "status": r.get("status"),
+            }
+        )
 
+    products.sort(key=lambda p: (p.get("sku") or ""))
     return web.json_response({"products": products})
 
 
 async def admin_price_list_import(request: web.Request) -> web.Response:
     reader = await request.multipart()
     file_part = None
+
     async for part in reader:
-        if part.name == "file":
+        if part.name in ("file", "price_list_file", "price_list"):
             file_part = part
             break
-    if not file_part:
-        return web.json_response({"status": "ko", "error": "missing_file"}, status=400)
+
+    if file_part is None:
+        return web.json_response({"error": "Nessun file di listino fornito."}, status=400)
 
     file_data = await file_part.read()
-    workbook = load_workbook(BytesIO(file_data), data_only=True)
-    sheet = workbook.active
-    rows = list(sheet.iter_rows(values_only=True))
-    if not rows:
-        return web.json_response({"status": "ok", "products": []})
+    if not file_data:
+        return web.json_response({"error": "File listino vuoto."}, status=400)
 
-    headers = []
-    if rows:
-        headers = [str(c).strip().lower() if c is not None else f"col{i}" for i, c in enumerate(rows[0])]
+    wb = load_workbook(io.BytesIO(file_data), data_only=True)
+    ws = wb.active
 
-    def value_from_row(row, key, default_index=None):
-        if key in headers:
-            idx = headers.index(key)
-            return row[idx]
-        if default_index is not None and default_index < len(row):
-            return row[default_index]
-        return None
-
-    def get_col(row, *names, default_index=None):
-        for name in names:
-            if name in headers:
-                idx = headers.index(name)
-                value = row[idx]
-                if value not in (None, ""):
-                    return value
-        if default_index is not None and default_index < len(row):
-            value = row[default_index]
-            if value not in (None, ""):
-                return value
-        return None
-
-    products = []
-    for raw in rows[1:]:
-        if all(cell is None for cell in raw):
+    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    header_map: dict[str, int] = {}
+    for idx, header in enumerate(header_row):
+        key = normalize_header(header)
+        if not key:
             continue
-        sku = value_from_row(raw, "sku", 0) or uuid.uuid4().hex[:12]
-        name = value_from_row(raw, "name", 1) or value_from_row(raw, "prodotto", 1)
-        description = value_from_row(raw, "description", 2) or value_from_row(raw, "descrizione", 2)
-        codice = get_col(raw, "codice", "codice_articolo", "codice articolo", "codice_art", "codice art")
-        price_distributore = value_from_row(raw, "prezzo_distributore", 3)
-        price_rivenditore = value_from_row(raw, "prezzo_rivenditore", 4)
-        price_rivenditore10 = value_from_row(raw, "prezzo_rivenditore10", 5)
-        qty_stock = value_from_row(raw, "quantità_stock", 6) or value_from_row(raw, "quantita_stock", 6) or value_from_row(raw, "qty_stock", 6)
-        status = value_from_row(raw, "status", 7) or "attivo"
+        header_map[key] = idx
 
-        product = {
-            "sku": str(sku),
-            "name": name or f"Prodotto {sku}",
-            "codice": str(codice).strip() if codice not in (None, "") else None,
-            "description_html": description,
-            "base_price": price_distributore or price_rivenditore or price_rivenditore10 or 0,
-            "price_distributore": float(price_distributore or 0) if price_distributore is not None else None,
-            "price_rivenditore": float(price_rivenditore or 0) if price_rivenditore is not None else None,
-            "price_rivenditore10": float(price_rivenditore10 or 0) if price_rivenditore10 is not None else None,
-            "qty_stock": safe_int(qty_stock, 0),
-            "status": str(status),
+    def get_cell(row, *candidates, default=None):
+        for cand in candidates:
+            cand_norm = normalize_header(cand)
+            idx = header_map.get(cand_norm)
+            if idx is not None and idx < len(row):
+                return row[idx]
+        return default
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row is None:
+            continue
+
+        codice = get_cell(row, "codice")
+        descrizione = get_cell(
+            row,
+            "descrizione",
+            "descrizione articolo",
+            "descrizione_articolo",
+            "nome",
+            "nome articolo",
+        )
+        prezzo_distributore = get_cell(row, "prezzo_distributore", "prezzo distributore")
+        prezzo_rivenditore = get_cell(row, "prezzo_rivenditore", "prezzo rivenditore")
+        prezzo_rivenditore10 = get_cell(
+            row,
+            "prezzo_rivenditore10",
+            "prezzo rivenditore10",
+            "prezzo_rivenditore_10",
+            "prezzo rivenditore 10",
+        )
+        qty_stock = get_cell(
+            row,
+            "quantità_stock",
+            "quantita_stock",
+            "quantita stock",
+            "quantità stock",
+            "qta",
+            "giacenza",
+        )
+        status = get_cell(row, "status", "stato")
+
+        if codice is not None:
+            codice = str(codice).strip()
+        if descrizione is not None:
+            descrizione = str(descrizione).strip()
+
+        if not codice and not descrizione:
+            skipped += 1
+            continue
+
+        sku = codice or (descrizione[:20] if descrizione else "")
+
+        base_price = safe_float(prezzo_rivenditore)
+        price_dist = safe_float(prezzo_distributore)
+        price_riv = safe_float(prezzo_rivenditore)
+        price_riv10 = safe_float(prezzo_rivenditore10)
+        qty = safe_int(qty_stock, 0)
+        status_norm = (str(status).strip().upper() if status is not None else "N")
+
+        product_data = {
+            "sku": sku,
+            "codice": codice or sku,
+            "name": descrizione or sku,
+            "desc_html": descrizione or "",
+            "image_hd": None,
+            "image_thumb": None,
             "gallery": [],
-            "extra": {},
+            "base_price": base_price,
+            "unit": "pz",
+            "markup_riv10": None,
+            "markup_riv": None,
+            "markup_dist": None,
+            "price_distributore": price_dist,
+            "price_rivenditore": price_riv,
+            "price_rivenditore10": price_riv10,
+            "qty_stock": qty,
+            "discount_dist_percent": 0.0,
+            "discount_riv_percent": 0.0,
+            "discount_riv10_percent": 0.0,
+            "status": "attivo" if status_norm == "S" else "non_disponibile",
         }
-        saved = upsert_product(product)
-        products.append(saved)
 
-    save_import_metadata(file_part.filename or "listino.xls", len(products))
+        existing = get_product_by_sku(sku)
+        upsert_product(product_data)
+        if existing:
+            updated += 1
+        else:
+            inserted += 1
+
+    total_processed = inserted + updated
+    save_import_metadata(file_part.filename or "listino.xls", total_processed)
     log_event(
         "price_list_import",
         filename=file_part.filename or "listino.xls",
-        imported_count=len(products),
+        imported_count=total_processed,
     )
-    return web.json_response({"status": "ok", "products": products})
+
+    products = list_products()
+    products.sort(key=lambda p: (p.get("sku") or ""))
+
+    return web.json_response(
+        {
+            "inserted": inserted,
+            "updated": updated,
+            "skipped": skipped,
+            "products": products,
+        }
+    )
 
 
 async def admin_product_save(request: web.Request) -> web.Response:

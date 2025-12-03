@@ -2268,7 +2268,7 @@
       const sku = (p.sku || "").toLowerCase();
       const codice = (p.codice || "").toLowerCase();
       const name = (p.name || "").toLowerCase();
-      const desc = (p.desc_html || p.description || "").toLowerCase();
+      const desc = (p.desc_html || "").toLowerCase();
 
       if (term) {
         const match = sku.includes(term) || codice.includes(term) || name.includes(term) || desc.includes(term);
@@ -2716,7 +2716,7 @@
       const sku = (p.sku || "").toLowerCase();
       const codice = (p.codice || "").toLowerCase();
       const name = (p.name || "").toLowerCase();
-      const desc = (p.desc_html || p.description || "").toLowerCase();
+      const desc = (p.desc_html || "").toLowerCase();
       if (!term) return true;
       return sku.includes(term) || codice.includes(term) || name.includes(term) || desc.includes(term);
     });
@@ -2790,14 +2790,15 @@
     fd.append("file", file);
     try {
       const data = await importPriceList(fd);
-      if (data) {
-        if (Array.isArray(data.products)) priceList = data.products;
-        else if (Array.isArray(data.items)) priceList = data.items;
-        else if (Array.isArray(data)) priceList = data;
+      if (data && Array.isArray(data.products)) {
+        priceList = data.products;
+      } else {
+        priceList = [];
       }
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
       refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
-      showToast("Listino importato correttamente.");
+      const msg = `Listino importato. Inseriti: ${data?.inserted || 0}, aggiornati: ${data?.updated || 0}, saltati: ${data?.skipped || 0}.`;
+      showToast(msg);
     } catch (e) {
       try {
         const refreshed = await fetch(BASE_URL + "/admin/products/all", { headers: buildAuthHeaders() });
@@ -4633,10 +4634,15 @@
         return normalized;
       });
       clients = clientsJson.clients || [];
-      if (Array.isArray(productsJson.products)) priceList = productsJson.products;
-      else if (Array.isArray(productsJson.items)) priceList = productsJson.items;
-      else if (Array.isArray(productsJson)) priceList = productsJson;
-      else priceList = [];
+      if (Array.isArray(productsJson.products)) {
+        priceList = productsJson.products;
+      } else if (Array.isArray(productsJson.items)) {
+        priceList = productsJson.items;
+      } else if (Array.isArray(productsJson)) {
+        priceList = productsJson;
+      } else {
+        priceList = [];
+      }
 
       renderDiscountPreview();
       renderClientsTable();
