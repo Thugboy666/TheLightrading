@@ -686,10 +686,18 @@
     <div id="location-path">Posizione: /</div>
     <div id="hint">Pinch/zoom o tap per esplorare. Tocca sistemi, stelle, pianeti e satelliti per scendere di livello.</div>
 
-    <div id="daily-coupon-box" class="coupon-box" style="display:none; margin-top:6px; padding:6px; border-radius:8px; border:1px solid var(--accent-color); background:#fffbe6;">
+    <div id="daily-coupon-box" class="coupon-box" style="display:none; margin-top:8px; padding:10px; border-radius:10px; border:1px solid #f97316; background:rgba(248,250,252,0.98); box-shadow:0 0 0 1px rgba(15,23,42,0.04); position:relative;">
+      <button id="daily-coupon-close"
+        type="button"
+        style="position:absolute; top:4px; right:6px; border:none; background:transparent; cursor:pointer; font-size:12px; line-height:1; color:rgba(15,23,42,0.55);">
+        ✕
+      </button>
+      <div id="daily-coupon-image-wrapper" style="display:none; margin-bottom:6px; text-align:left;">
+        <img id="daily-coupon-image" src="" alt="" style="width:64px;height:64px;object-fit:contain; border-radius:10px;border:1px solid #e5e7eb;background:#ffffff;" />
+      </div>
       <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Offerta daily – prodotto del giorno</div>
-      <div id="daily-coupon-code" style="font-size:16px;font-weight:700;margin-bottom:4px;"></div>
-      <div id="daily-coupon-product" style="font-size:11px;margin-bottom:4px;"></div>
+      <div id="daily-coupon-product" style="font-size:12px;font-weight:700;color:#16a34a;margin-bottom:4px;"></div>
+      <div id="daily-coupon-code-display" style="font-size:18px;font-weight:700;color:#16a34a;margin:6px 0;"></div>
       <div id="daily-coupon-validity" style="font-size:10px;opacity:0.7;margin-bottom:4px;"></div>
 
       <div style="font-size:10px;margin-bottom:6px;">
@@ -1640,9 +1648,12 @@
 
   const btnDailyOffer = document.getElementById("btn-daily-offer");
   const dailyCouponBox = document.getElementById("daily-coupon-box");
-  const dailyCouponCodeEl = document.getElementById("daily-coupon-code");
+  const dailyCouponCloseBtn = document.getElementById("daily-coupon-close");
+  const dailyCouponCodeEl = document.getElementById("daily-coupon-code-display"); // USER display
   const dailyCouponProductEl = document.getElementById("daily-coupon-product");
   const dailyCouponValidityEl = document.getElementById("daily-coupon-validity");
+  const dailyCouponImageWrapper = document.getElementById("daily-coupon-image-wrapper");
+  const dailyCouponImage = document.getElementById("daily-coupon-image");
   const btnCopyCoupon = document.getElementById("btn-copy-coupon");
   const btnGoCart = document.getElementById("btn-go-cart");
 
@@ -1768,7 +1779,7 @@
   const dailyDiscountDistInput = document.getElementById("daily-discount-dist");
   const dailyDiscountRivInput = document.getElementById("daily-discount-riv");
   const dailyDiscountRiv10Input = document.getElementById("daily-discount-riv10");
-  const dailyCouponCodeInput = document.getElementById("daily-coupon-code");
+  const dailyCouponCodeInput = document.getElementById("daily-coupon-code"); // ADMIN input
   const dailyActiveFlagInput = document.getElementById("daily-active-flag");
   const dailySummaryBox = document.getElementById("daily-summary");
   const btnDailySave = document.getElementById("btn-daily-save");
@@ -2052,6 +2063,11 @@
   if (btnDailyOffer) {
     btnDailyOffer.addEventListener("click", () => {
       openDailyOfferForUser();
+    });
+  }
+  if (dailyCouponCloseBtn) {
+    dailyCouponCloseBtn.addEventListener("click", () => {
+      hideDailyCouponBox();
     });
   }
   if (btnCopyCoupon && dailyCouponCodeEl) {
@@ -3016,14 +3032,53 @@
       const name = data.product_name || data.sku || "";
       const start = data.start_at || null;
       const end = data.end_at || null;
+      const sku = data.sku || null;
 
-      if (dailyCouponCodeEl) dailyCouponCodeEl.textContent = code;
-      if (dailyCouponProductEl) dailyCouponProductEl.textContent = name ? `Prodotto: ${name}` : "";
+      let product = null;
+      if (Array.isArray(priceList) && priceList.length) {
+        if (sku) {
+          product = priceList.find((p) => String(p.sku) === String(sku));
+        }
+        if (!product && name) {
+          const lowerName = String(name).toLowerCase();
+          product = priceList.find(
+            (p) => String(p.name || "").toLowerCase() === lowerName
+          );
+        }
+      }
+
+      if (dailyCouponCodeEl) {
+        dailyCouponCodeEl.textContent = code;
+      }
+      if (dailyCouponProductEl) {
+        dailyCouponProductEl.textContent = name ? name : "";
+      }
       if (dailyCouponValidityEl) {
         if (start || end) {
-          dailyCouponValidityEl.textContent = `Valida oggi, entro i limiti di orario impostati per l'offerta.`;
+          dailyCouponValidityEl.textContent =
+            "Valida oggi, entro i limiti di orario impostati per l'offerta.";
         } else {
           dailyCouponValidityEl.textContent = "";
+        }
+      }
+
+      if (dailyCouponImageWrapper && dailyCouponImage) {
+        if (product) {
+          const imgUrl =
+            product.image_thumb || product.image_hd || product.image || "";
+          if (imgUrl) {
+            dailyCouponImage.src = imgUrl;
+            dailyCouponImage.alt = product.name || name || "Prodotto daily";
+            dailyCouponImageWrapper.style.display = "block";
+          } else {
+            dailyCouponImageWrapper.style.display = "none";
+            dailyCouponImage.src = "";
+            dailyCouponImage.alt = "";
+          }
+        } else {
+          dailyCouponImageWrapper.style.display = "none";
+          dailyCouponImage.src = "";
+          dailyCouponImage.alt = "";
         }
       }
 
