@@ -1076,10 +1076,13 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
     )
 
 
-@routes.get("/admin/price_list/status")
-@require_admin
 async def admin_price_list_status(request: web.Request) -> web.Response:
-    last_import_at = get_meta_value("price_list_last_import_at")
+    db = request.app["db"]
+    row = await db.fetch_one(
+        "SELECT value FROM meta WHERE key = :key",
+        {"key": "price_list_last_import_at"},
+    )
+    last_import_at = row["value"] if row else None
     return web.json_response({"last_import_at": last_import_at})
 
 
