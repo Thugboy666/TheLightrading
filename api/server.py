@@ -871,6 +871,19 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
             return row[default_index]
         return None
 
+    def get_col(row, *names, default_index=None):
+        for name in names:
+            if name in headers:
+                idx = headers.index(name)
+                value = row[idx]
+                if value not in (None, ""):
+                    return value
+        if default_index is not None and default_index < len(row):
+            value = row[default_index]
+            if value not in (None, ""):
+                return value
+        return None
+
     products = []
     for raw in rows[1:]:
         if all(cell is None for cell in raw):
@@ -878,6 +891,7 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
         sku = value_from_row(raw, "sku", 0) or uuid.uuid4().hex[:12]
         name = value_from_row(raw, "name", 1) or value_from_row(raw, "prodotto", 1)
         description = value_from_row(raw, "description", 2) or value_from_row(raw, "descrizione", 2)
+        codice = get_col(raw, "codice", "codice_articolo", "codice articolo", "codice_art", "codice art")
         price_distributore = value_from_row(raw, "prezzo_distributore", 3)
         price_rivenditore = value_from_row(raw, "prezzo_rivenditore", 4)
         price_rivenditore10 = value_from_row(raw, "prezzo_rivenditore10", 5)
@@ -887,6 +901,7 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
         product = {
             "sku": str(sku),
             "name": name or f"Prodotto {sku}",
+            "codice": str(codice).strip() if codice not in (None, "") else None,
             "description_html": description,
             "base_price": price_distributore or price_rivenditore or price_rivenditore10 or 0,
             "price_distributore": float(price_distributore or 0) if price_distributore is not None else None,
@@ -914,6 +929,7 @@ async def admin_product_save(request: web.Request) -> web.Response:
     product = {
         "sku": body.get("sku") or str(uuid.uuid4()),
         "name": body.get("name"),
+        "codice": body.get("codice"),
         "image_hd": body.get("image_hd"),
         "image_thumb": body.get("image_thumb"),
         "gallery": body.get("gallery") or [],

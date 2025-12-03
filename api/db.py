@@ -98,6 +98,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS products (
                 sku TEXT PRIMARY KEY,
                 name TEXT,
+                codice TEXT,
                 image_hd TEXT,
                 image_thumb TEXT,
                 gallery_json TEXT,
@@ -127,6 +128,7 @@ def init_db() -> None:
             row["name"] for row in cur.execute("PRAGMA table_info(products)").fetchall()
         }
         migrations_products = [
+            ("codice", "ALTER TABLE products ADD COLUMN codice TEXT"),
             ("price_distributore", "ALTER TABLE products ADD COLUMN price_distributore REAL"),
             ("price_rivenditore", "ALTER TABLE products ADD COLUMN price_rivenditore REAL"),
             ("price_rivenditore10", "ALTER TABLE products ADD COLUMN price_rivenditore10 REAL"),
@@ -631,6 +633,7 @@ def upsert_product(data: Dict[str, Any]) -> Dict[str, Any]:
     payload = {
         "sku": data.get("sku"),
         "name": data.get("name"),
+        "codice": data.get("codice"),
         "image_hd": data.get("image_hd"),
         "image_thumb": data.get("image_thumb"),
         "gallery_json": gallery_json,
@@ -656,10 +659,11 @@ def upsert_product(data: Dict[str, Any]) -> Dict[str, Any]:
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO products (sku, name, image_hd, image_thumb, gallery_json, description_html, base_price, unit, markup_riv10, markup_riv, markup_dist, price_riv10, price_riv, price_dist, extra_json, price_distributore, price_rivenditore, price_rivenditore10, qty_stock, discount_dist_percent, discount_riv_percent, discount_riv10_percent, status)
-            VALUES (:sku, :name, :image_hd, :image_thumb, :gallery_json, :description_html, :base_price, :unit, :markup_riv10, :markup_riv, :markup_dist, :price_riv10, :price_riv, :price_dist, :extra_json, :price_distributore, :price_rivenditore, :price_rivenditore10, :qty_stock, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :status)
+            INSERT INTO products (sku, name, codice, image_hd, image_thumb, gallery_json, description_html, base_price, unit, markup_riv10, markup_riv, markup_dist, price_riv10, price_riv, price_dist, extra_json, price_distributore, price_rivenditore, price_rivenditore10, qty_stock, discount_dist_percent, discount_riv_percent, discount_riv10_percent, status)
+            VALUES (:sku, :name, :codice, :image_hd, :image_thumb, :gallery_json, :description_html, :base_price, :unit, :markup_riv10, :markup_riv, :markup_dist, :price_riv10, :price_riv, :price_dist, :extra_json, :price_distributore, :price_rivenditore, :price_rivenditore10, :qty_stock, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :status)
             ON CONFLICT(sku) DO UPDATE SET
                 name=excluded.name,
+                codice=excluded.codice,
                 image_hd=excluded.image_hd,
                 image_thumb=excluded.image_thumb,
                 gallery_json=excluded.gallery_json,

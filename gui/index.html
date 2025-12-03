@@ -1011,9 +1011,14 @@
           <input id="prod-sku" readonly />
         </div>
         <div class="field">
-          <label>Nome prodotto</label>
-          <input id="prod-name" />
+          <label>Codice articolo</label>
+          <input id="prod-code" type="text" />
         </div>
+      </div>
+
+      <div class="field">
+        <label>Nome prodotto</label>
+        <input id="prod-name" />
       </div>
 
       <div class="two-cols">
@@ -1374,14 +1379,23 @@
         <div class="field">
           <label>Carica file .xlsx (Excel moderno)</label>
           <input id="price-list-file" type="file" accept=".xlsx" />
-          <small>Campi richiesti: nome/descrizione articolo, prezzo_distributore, prezzo_rivenditore, prezzo_rivenditore10, quantità_stock, status.</small>
+          <small>
+            Campi richiesti nel file .xlsx (intestazioni colonna, minuscolo/maiuscolo indifferente):<br />
+            - <strong>codice</strong> (codice articolo interno, es: "codice", "codice_articolo", "codice articolo")<br />
+            - <strong>nome</strong> o <strong>descrizione</strong> articolo<br />
+            - <strong>prezzo_distributore</strong><br />
+            - <strong>prezzo_rivenditore</strong><br />
+            - <strong>prezzo_rivenditore10</strong><br />
+            - <strong>quantità_stock</strong><br />
+            - <strong>status</strong>
+          </small>
         </div>
         <div class="sheet-actions">
           <button class="btn" id="btn-price-list-upload">Carica listino</button>
         </div>
         <div class="field" style="margin-top:8px;">
           <label>Ricerca prodotti</label>
-          <input id="price-list-search" type="text" placeholder="Cerca per nome, descrizione o SKU (match in qualsiasi punto della stringa)" />
+          <input id="price-list-search" type="text" placeholder="Cerca per nome, descrizione, codice o SKU (match in qualsiasi punto della stringa)" />
         </div>
 
         <div class="html-preview" id="price-list-table-wrapper" style="max-height:220px; overflow:auto; margin-top:6px;">
@@ -1652,6 +1666,7 @@
   const sheetProduct = document.getElementById("sheet-product-editor");
   const sheetAdmin = document.getElementById("sheet-admin");
   const skuInput = document.getElementById("prod-sku");
+  const codeInput = document.getElementById("prod-code");
   const nameInput = document.getElementById("prod-name");
   const imageHdInput = document.getElementById("prod-image-hd");
   const imageThumbInput = document.getElementById("prod-image-thumb");
@@ -2238,7 +2253,8 @@
     (priceList || []).forEach((p) => {
       const opt = document.createElement("option");
       opt.value = p.sku;
-      opt.textContent = `${p.sku} – ${p.name || ""}`;
+      const codice = p.codice ? ` [${p.codice}]` : "";
+      opt.textContent = `${p.sku}${codice} – ${p.name || ""}`;
       dailyProductSelect.appendChild(opt);
     });
 
@@ -2674,10 +2690,11 @@
 
     const filtered = priceList.filter((p) => {
       const sku = (p.sku || "").toLowerCase();
+      const codice = (p.codice || "").toLowerCase();
       const name = (p.name || "").toLowerCase();
       const desc = (p.desc || p.description || p.description_html || "").toLowerCase();
       if (!term) return true;
-      return sku.includes(term) || name.includes(term) || desc.includes(term);
+      return sku.includes(term) || codice.includes(term) || name.includes(term) || desc.includes(term);
     });
 
     if (!filtered.length) {
@@ -2688,6 +2705,7 @@
     const rows = filtered
       .map((p) => {
         const sku = p.sku || "";
+        const codice = p.codice || "";
         const name = p.name || "";
         const base = typeof p.base_price === "number" ? p.base_price : p.base_price || "";
         const dist = typeof p.price_distributore === "number" ? p.price_distributore : p.price_distributore || p.price_dist || "";
@@ -2697,6 +2715,7 @@
         return `
       <tr data-sku="${sku}">
         <td>${sku}</td>
+        <td>${codice}</td>
         <td>${name}</td>
         <td style="text-align:right;">${base}</td>
         <td style="text-align:right;">${dist}</td>
@@ -2716,6 +2735,7 @@
       <thead>
         <tr>
           <th>SKU</th>
+          <th>Codice</th>
           <th>Nome</th>
           <th>Base</th>
           <th>Dist.</th>
@@ -3336,6 +3356,7 @@
     editingProduct = prod;
 
     skuInput.value = prod.sku || "";
+    codeInput.value = prod.codice || "";
     nameInput.value = prod.name || "";
     imageHdInput.value = prod.image_hd || prod.image_url || prod.image || "";
     imageThumbInput.value = prod.image_thumb || "";
@@ -3376,6 +3397,7 @@
 
     const payload = {
       sku: skuInput.value.trim(),
+      codice: codeInput.value.trim() || null,
       name: nameInput.value.trim(),
       image_hd: imageHdInput.value.trim(),
       image_thumb: imageThumbInput.value.trim(),
