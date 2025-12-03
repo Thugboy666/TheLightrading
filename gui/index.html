@@ -2541,6 +2541,9 @@
     ordersEmpty.style.display = "none";
 
     orders.forEach(order => {
+      const hasTotalAmount = order.total_amount != null;
+      const totalAmount = hasTotalAmount ? normalizeOrderAmount(order.total_amount) : null;
+
       const tr = document.createElement("tr");
       const tdDate = document.createElement("td");
       tdDate.textContent = formatOrderDate(order.order_date);
@@ -2555,7 +2558,7 @@
       const tdEmail = document.createElement("td");
       tdEmail.textContent = order.customer_email || "—";
       const tdTotal = document.createElement("td");
-      tdTotal.textContent = order.total_amount != null ? formatEuro(Number(order.total_amount)) : "—";
+      tdTotal.textContent = hasTotalAmount ? formatEuro(totalAmount) : "—";
 
       tr.append(tdDate, tdDoc, tdStatus, tdCause, tdName, tdEmail, tdTotal);
       ordersTableBody.appendChild(tr);
@@ -2577,7 +2580,7 @@
 
       const totalRow = document.createElement("div");
       totalRow.className = "order-card-row";
-      totalRow.innerHTML = `<strong>Totale:</strong> ${order.total_amount != null ? formatEuro(Number(order.total_amount)) : "—"}`;
+      totalRow.innerHTML = `<strong>Totale:</strong> ${hasTotalAmount ? formatEuro(totalAmount) : "—"}`;
 
       card.append(header, badgesRow, meta, totalRow);
       ordersCards.appendChild(card);
@@ -2661,6 +2664,25 @@
   function formatPrice(v) {
     if (!isFinite(v)) return "";
     return v.toFixed(2) + " €";
+  }
+
+  function normalizeOrderAmount(raw) {
+    if (raw == null) return 0;
+
+    let value = raw;
+
+    if (typeof value === "string") {
+      value = value.replace(",", ".");
+    }
+
+    let n = Number(value);
+    if (!isFinite(n) || isNaN(n)) return 0;
+
+    if (Number.isInteger(n) && n >= 1000) {
+      n = n / 100;
+    }
+
+    return n;
   }
 
   const euroFormatter = new Intl.NumberFormat("it-IT", {
