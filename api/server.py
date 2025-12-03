@@ -1142,6 +1142,10 @@ async def admin_daily_offer_get(request: web.Request) -> web.Response:
 
 async def admin_daily_offer_save(request: web.Request) -> web.Response:
     body = await request.json()
+    min_qty = safe_int(body.get("min_qty", 1), 1)
+    if min_qty < 1:
+        min_qty = 1
+    body["min_qty"] = min_qty
     offer = save_daily_offer(body)
     enriched = _enrich_daily_offer(offer)
     return web.json_response(enriched)
@@ -1187,6 +1191,7 @@ async def public_daily_offer(request: web.Request) -> web.Response:
         "discount_dist_percent": offer.get("discount_dist_percent", 0),
         "discount_riv_percent": offer.get("discount_riv_percent", 0),
         "discount_riv10_percent": offer.get("discount_riv10_percent", 0),
+        "min_qty": offer.get("min_qty", 1),
     }
     return web.json_response(response)
 

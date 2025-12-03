@@ -223,10 +223,19 @@ def init_db() -> None:
                 discount_riv_percent REAL DEFAULT 0,
                 discount_riv10_percent REAL DEFAULT 0,
                 coupon_code TEXT,
-                active INTEGER DEFAULT 0
+                active INTEGER DEFAULT 0,
+                min_qty INTEGER NOT NULL DEFAULT 1
             )
             """
         )
+        # Migrazione campo min_qty
+        daily_cols = {
+            row["name"] for row in cur.execute("PRAGMA table_info(daily_offer)").fetchall()
+        }
+        if "min_qty" not in daily_cols:
+            cur.execute(
+                "ALTER TABLE daily_offer ADD COLUMN min_qty INTEGER NOT NULL DEFAULT 1"
+            )
         conn.commit()
 
 
@@ -790,8 +799,8 @@ def save_daily_offer(data: Dict[str, Any]) -> Dict[str, Any]:
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO daily_offer (id, sku, start_at, end_at, discount_dist_percent, discount_riv_percent, discount_riv10_percent, coupon_code, active)
-            VALUES (1, :sku, :start_at, :end_at, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :coupon_code, :active)
+            INSERT INTO daily_offer (id, sku, start_at, end_at, discount_dist_percent, discount_riv_percent, discount_riv10_percent, coupon_code, active, min_qty)
+            VALUES (1, :sku, :start_at, :end_at, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :coupon_code, :active, :min_qty)
             ON CONFLICT(id) DO UPDATE SET
                 sku=excluded.sku,
                 start_at=excluded.start_at,
@@ -800,7 +809,8 @@ def save_daily_offer(data: Dict[str, Any]) -> Dict[str, Any]:
                 discount_riv_percent=excluded.discount_riv_percent,
                 discount_riv10_percent=excluded.discount_riv10_percent,
                 coupon_code=excluded.coupon_code,
-                active=excluded.active
+                active=excluded.active,
+                min_qty=excluded.min_qty
             """,
             {
                 "sku": data.get("sku"),
@@ -811,6 +821,7 @@ def save_daily_offer(data: Dict[str, Any]) -> Dict[str, Any]:
                 "discount_riv10_percent": data.get("discount_riv10_percent", 0),
                 "coupon_code": data.get("coupon_code"),
                 "active": 1 if data.get("active") else 0,
+                "min_qty": data.get("min_qty", 1),
             },
         )
         conn.commit()

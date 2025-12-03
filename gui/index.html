@@ -700,6 +700,26 @@
       <div id="daily-coupon-code-display" style="font-size:18px;font-weight:700;color:#16a34a;margin:6px 0;"></div>
       <div id="daily-coupon-validity" style="font-size:10px;opacity:0.7;margin-bottom:4px;"></div>
 
+      <div id="daily-price-box"
+           style="margin:6px 0 4px 0; font-size:12px;">
+        <div id="daily-price-row-original"
+             style="font-size:11px;color:#6b7280;margin-bottom:2px;">
+          Prezzo standard: <span id="daily-price-original"
+                                 style="text-decoration:line-through;font-weight:500;"></span>
+        </div>
+        <div id="daily-price-row-discounted"
+             style="display:flex;align-items:baseline;gap:6px;">
+          <span id="daily-price-discounted"
+                style="font-size:18px;font-weight:800;color:#dc2626;"></span>
+          <span id="daily-price-percent"
+                style="font-size:12px;font-weight:700;color:#16a34a;"></span>
+        </div>
+      </div>
+
+      <div id="daily-min-qty-info"
+           style="font-size:11px;color:#4b5563;margin:4px 0 6px 0;">
+      </div>
+
       <div style="font-size:10px;margin-bottom:6px;">
         <strong>IMPORTANTE:</strong> per utilizzare il coupon devi:
         <ol style="margin:4px 0 0 14px;padding:0;">
@@ -1351,6 +1371,12 @@
           </div>
         </div>
 
+        <div class="field">
+          <label>Minimo ordinabile per offerta</label>
+          <input id="daily-min-qty" type="number" min="1" step="1" value="1" />
+          <small>Numero minimo di pezzi da ordinare per usufruire dell'offerta. Default: 1 pz.</small>
+        </div>
+
         <div class="two-cols">
           <div class="field">
             <label>% sconto distributore</label>
@@ -1654,6 +1680,11 @@
   const dailyCouponValidityEl = document.getElementById("daily-coupon-validity");
   const dailyCouponImageWrapper = document.getElementById("daily-coupon-image-wrapper");
   const dailyCouponImage = document.getElementById("daily-coupon-image");
+  const dailyPriceBox = document.getElementById("daily-price-box");
+  const dailyPriceOriginalEl = document.getElementById("daily-price-original");
+  const dailyPriceDiscountedEl = document.getElementById("daily-price-discounted");
+  const dailyPricePercentEl = document.getElementById("daily-price-percent");
+  const dailyMinQtyInfoEl = document.getElementById("daily-min-qty-info");
   const btnCopyCoupon = document.getElementById("btn-copy-coupon");
   const btnGoCart = document.getElementById("btn-go-cart");
 
@@ -1776,6 +1807,7 @@
   const dailyProductSelect = document.getElementById("daily-product-select");
   const dailyStartInput = document.getElementById("daily-start");
   const dailyEndInput = document.getElementById("daily-end");
+  const dailyMinQtyInput = document.getElementById("daily-min-qty");
   const dailyDiscountDistInput = document.getElementById("daily-discount-dist");
   const dailyDiscountRivInput = document.getElementById("daily-discount-riv");
   const dailyDiscountRiv10Input = document.getElementById("daily-discount-riv10");
@@ -1979,7 +2011,8 @@
         discount_riv_percent: dailyDiscountRivInput.value ? Number(dailyDiscountRivInput.value) : 0,
         discount_riv10_percent: dailyDiscountRiv10Input.value ? Number(dailyDiscountRiv10Input.value) : 0,
         coupon_code: dailyCouponCodeInput.value.trim(),
-        active: dailyActiveFlagInput.value === "1"
+        active: dailyActiveFlagInput.value === "1",
+        min_qty: dailyMinQtyInput.value ? Number(dailyMinQtyInput.value) : 1
       };
 
       try {
@@ -2345,6 +2378,7 @@
     const startLabel = dailyOffer.start_at || "-";
     const endLabel = dailyOffer.end_at || "-";
     const coupon = dailyOffer.coupon_code || "-";
+    const minQtyLabel = dailyOffer.min_qty != null ? dailyOffer.min_qty : 1;
 
     dailySummaryBox.innerHTML = `
     <div style="font-size:11px;">
@@ -2352,6 +2386,7 @@
       <div><strong>Prodotto:</strong> ${sku} – ${name}</div>
       <div><strong>Periodo:</strong> ${startLabel} → ${endLabel}</div>
       <div><strong>Coupon:</strong> ${coupon}</div>
+      <div><strong>Minimo ordinabile:</strong> ${minQtyLabel} pz</div>
       <div><strong>Sconti:</strong> Dist ${dailyOffer.discount_dist_percent || 0}% · Riv ${dailyOffer.discount_riv_percent || 0}% · Riv+10 ${dailyOffer.discount_riv10_percent || 0}%</div>
     </div>
   `;
@@ -2365,6 +2400,7 @@
       if (dailyDiscountDistInput) dailyDiscountDistInput.value = "";
       if (dailyDiscountRivInput) dailyDiscountRivInput.value = "";
       if (dailyDiscountRiv10Input) dailyDiscountRiv10Input.value = "";
+      if (dailyMinQtyInput) dailyMinQtyInput.value = "1";
       if (dailyCouponCodeInput) dailyCouponCodeInput.value = "";
       if (dailyActiveFlagInput) dailyActiveFlagInput.value = "0";
       renderDailySummary();
@@ -2381,6 +2417,8 @@
       dailyDiscountRivInput.value = dailyOffer.discount_riv_percent != null ? dailyOffer.discount_riv_percent : "";
     if (dailyDiscountRiv10Input)
       dailyDiscountRiv10Input.value = dailyOffer.discount_riv10_percent != null ? dailyOffer.discount_riv10_percent : "";
+    if (dailyMinQtyInput)
+      dailyMinQtyInput.value = dailyOffer.min_qty != null ? dailyOffer.min_qty : 1;
     if (dailyCouponCodeInput) dailyCouponCodeInput.value = dailyOffer.coupon_code || "";
     if (dailyActiveFlagInput) dailyActiveFlagInput.value = dailyOffer.active ? "1" : "0";
     renderDailySummary();
@@ -3017,6 +3055,22 @@
     }
   }
 
+  function getUserPriceConfig() {
+    const tier = (
+      (currentUser && (currentUser.tier || currentUser.list_type || "")) || ""
+    ).toLowerCase();
+    if (!tier) {
+      return { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
+    }
+    if (tier.includes("dist")) {
+      return { priceField: "price_distributore", discountField: "discount_dist_percent" };
+    }
+    if (tier.includes("10")) {
+      return { priceField: "price_rivenditore10", discountField: "discount_riv10_percent" };
+    }
+    return { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
+  }
+
   async function openDailyOfferForUser() {
     try {
       const res = await fetch(BASE_URL + "/offer/daily");
@@ -3045,6 +3099,37 @@
             (p) => String(p.name || "").toLowerCase() === lowerName
           );
         }
+      }
+
+      const minQty = typeof data.min_qty === "number" ? data.min_qty : data.min_qty ? Number(data.min_qty) : 1;
+      const cfg = getUserPriceConfig();
+      let basePrice = null;
+      let discountPercent = 0;
+
+      if (product) {
+        const rawBase = product[cfg.priceField];
+        if (typeof rawBase === "number") {
+          basePrice = rawBase;
+        } else if (rawBase != null && rawBase !== "") {
+          const parsed = Number(rawBase);
+          basePrice = Number.isFinite(parsed) ? parsed : null;
+        }
+      }
+
+      if (cfg.discountField === "discount_dist_percent" && typeof data.discount_dist_percent === "number") {
+        discountPercent = data.discount_dist_percent;
+      } else if (cfg.discountField === "discount_riv_percent" && typeof data.discount_riv_percent === "number") {
+        discountPercent = data.discount_riv_percent;
+      } else if (
+        cfg.discountField === "discount_riv10_percent" &&
+        typeof data.discount_riv10_percent === "number"
+      ) {
+        discountPercent = data.discount_riv10_percent;
+      }
+
+      let finalPrice = null;
+      if (basePrice != null && discountPercent > 0) {
+        finalPrice = basePrice * (1 - discountPercent / 100);
       }
 
       if (dailyCouponCodeEl) {
@@ -3079,6 +3164,29 @@
           dailyCouponImageWrapper.style.display = "none";
           dailyCouponImage.src = "";
           dailyCouponImage.alt = "";
+        }
+      }
+
+      if (dailyPriceBox && dailyPriceOriginalEl && dailyPriceDiscountedEl && dailyPricePercentEl) {
+        if (basePrice != null && finalPrice != null) {
+          dailyPriceBox.style.display = "block";
+          dailyPriceOriginalEl.textContent = formatEuro(basePrice);
+          dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
+          dailyPricePercentEl.textContent = discountPercent > 0 ? `-${discountPercent.toFixed(0)}%` : "";
+        } else {
+          dailyPriceBox.style.display = "none";
+          dailyPriceOriginalEl.textContent = "";
+          dailyPriceDiscountedEl.textContent = "";
+          dailyPricePercentEl.textContent = "";
+        }
+      }
+
+      if (dailyMinQtyInfoEl) {
+        const safeMin = !minQty || minQty < 1 ? 1 : minQty;
+        if (safeMin > 1) {
+          dailyMinQtyInfoEl.textContent = `Minimo ordinabile per usufruire dell'offerta: ${safeMin} pezzi.`;
+        } else {
+          dailyMinQtyInfoEl.textContent = `Minimo ordinabile per usufruire dell'offerta: 1 pezzo.`;
         }
       }
 
