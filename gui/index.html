@@ -730,9 +730,27 @@
         </ol>
       </div>
 
-      <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="btn" id="btn-copy-coupon">Copia coupon</button>
-        <button class="btn" id="btn-go-cart">Vai al tuo carrello</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+        <button id="btn-add-to-cart"
+                class="btn"
+                type="button"
+                style="flex:1;min-width:0;">
+          <strong>1</strong>&nbsp; Aggiungi articolo al carrello
+        </button>
+
+        <button id="btn-copy-coupon"
+                class="btn"
+                type="button"
+                style="flex:1;min-width:0;">
+          <strong>2</strong>&nbsp; Copia coupon
+        </button>
+
+        <button id="btn-go-cart"
+                class="btn"
+                type="button"
+                style="flex:1;min-width:0;">
+          <strong>3</strong>&nbsp; Vai al tuo carrello
+        </button>
       </div>
     </div>
 
@@ -1372,6 +1390,12 @@
         </div>
 
         <div class="field">
+          <label>Link sito prodotto</label>
+          <input id="daily-product-url" type="text" placeholder="https://www.ormanet.it/percorso/prodotto" />
+          <small>URL della scheda prodotto sul sito Ormanet (verrà aperto dal bottone &quot;1 Aggiungi articolo al carrello&quot;).</small>
+        </div>
+
+        <div class="field">
           <label>Minimo ordinabile per offerta</label>
           <input id="daily-min-qty" type="number" min="1" step="1" value="1" />
           <small>Numero minimo di pezzi da ordinare per usufruire dell'offerta. Default: 1 pz.</small>
@@ -1685,6 +1709,7 @@
   const dailyPriceDiscountedEl = document.getElementById("daily-price-discounted");
   const dailyPricePercentEl = document.getElementById("daily-price-percent");
   const dailyMinQtyInfoEl = document.getElementById("daily-min-qty-info");
+  const btnAddToCart = document.getElementById("btn-add-to-cart");
   const btnCopyCoupon = document.getElementById("btn-copy-coupon");
   const btnGoCart = document.getElementById("btn-go-cart");
 
@@ -1813,6 +1838,7 @@
   const dailyDiscountRiv10Input = document.getElementById("daily-discount-riv10");
   const dailyCouponCodeInput = document.getElementById("daily-coupon-code"); // ADMIN input
   const dailyActiveFlagInput = document.getElementById("daily-active-flag");
+  const dailyProductUrlInput = document.getElementById("daily-product-url");
   const dailySummaryBox = document.getElementById("daily-summary");
   const btnDailySave = document.getElementById("btn-daily-save");
   const btnDailyToggle = document.getElementById("btn-daily-toggle");
@@ -2012,7 +2038,8 @@
         discount_riv10_percent: dailyDiscountRiv10Input.value ? Number(dailyDiscountRiv10Input.value) : 0,
         coupon_code: dailyCouponCodeInput.value.trim(),
         active: dailyActiveFlagInput.value === "1",
-        min_qty: dailyMinQtyInput.value ? Number(dailyMinQtyInput.value) : 1
+        min_qty: dailyMinQtyInput.value ? Number(dailyMinQtyInput.value) : 1,
+        product_url: dailyProductUrlInput ? dailyProductUrlInput.value.trim() : ""
       };
 
       try {
@@ -2126,6 +2153,24 @@
       } catch (err) {
         console.error("Errore copia coupon", err);
         showToast("Non è stato possibile copiare il coupon.");
+      }
+    });
+  }
+  if (btnAddToCart) {
+    btnAddToCart.addEventListener("click", () => {
+      const url =
+        (dailyOffer && dailyOffer.product_url) ||
+        (typeof dailyOfferProductUrl !== "undefined" ? dailyOfferProductUrl : null);
+
+      if (!url) {
+        showToast("Nessun link prodotto configurato per questa offerta.");
+        return;
+      }
+
+      try {
+        window.open(url, "_blank");
+      } catch (e) {
+        window.location.href = url;
       }
     });
   }
@@ -2397,6 +2442,7 @@
       if (dailyProductSelect) dailyProductSelect.value = "";
       if (dailyStartInput) dailyStartInput.value = "";
       if (dailyEndInput) dailyEndInput.value = "";
+      if (dailyProductUrlInput) dailyProductUrlInput.value = "";
       if (dailyDiscountDistInput) dailyDiscountDistInput.value = "";
       if (dailyDiscountRivInput) dailyDiscountRivInput.value = "";
       if (dailyDiscountRiv10Input) dailyDiscountRiv10Input.value = "";
@@ -2411,6 +2457,8 @@
     if (dailyOffer.sku && dailyProductSelect) dailyProductSelect.value = dailyOffer.sku;
     if (dailyStartInput) dailyStartInput.value = toInputDateTimeLocal(dailyOffer.start_at);
     if (dailyEndInput) dailyEndInput.value = toInputDateTimeLocal(dailyOffer.end_at);
+    if (dailyProductUrlInput)
+      dailyProductUrlInput.value = dailyOffer.product_url || "";
     if (dailyDiscountDistInput)
       dailyDiscountDistInput.value = dailyOffer.discount_dist_percent != null ? dailyOffer.discount_dist_percent : "";
     if (dailyDiscountRivInput)
@@ -3125,6 +3173,8 @@
         showToast("Nessuna offerta daily attiva al momento.");
         return;
       }
+
+      dailyOffer = data || dailyOffer;
 
       const code = data.coupon_code || "";
       const name = data.product_name || data.sku || "";

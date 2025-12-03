@@ -1146,6 +1146,8 @@ async def admin_daily_offer_save(request: web.Request) -> web.Response:
     if min_qty < 1:
         min_qty = 1
     body["min_qty"] = min_qty
+    product_url = (body.get("product_url") or "").strip() or None
+    body["product_url"] = product_url
     offer = save_daily_offer(body)
     enriched = _enrich_daily_offer(offer)
     return web.json_response(enriched)
@@ -1192,6 +1194,7 @@ async def public_daily_offer(request: web.Request) -> web.Response:
         "discount_riv_percent": offer.get("discount_riv_percent", 0),
         "discount_riv10_percent": offer.get("discount_riv10_percent", 0),
         "min_qty": offer.get("min_qty", 1),
+        "product_url": offer.get("product_url"),
     }
     return web.json_response(response)
 
