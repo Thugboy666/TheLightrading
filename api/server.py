@@ -31,6 +31,7 @@ from .db import (
     get_user_by_email,
     get_user_by_id,
     init_db,
+    get_db,
     list_orders,
     insert_discount_rule,
     link_client_to_user_by_email,
@@ -114,6 +115,7 @@ UI_INDEX = _resolve_ui_index()
 
 # Initialize persistence layer
 init_db()
+db = get_db()
 
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
 #   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
@@ -1078,11 +1080,14 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
 
 
 async def admin_price_list_status(request: web.Request) -> web.Response:
-    db = request.app["db"]
-    row = await db.fetch_one(
-        "SELECT value FROM meta WHERE key = :key",
-        {"key": "price_list_last_import_at"},
-    )
+    db = request.app.get("db")
+    if db is None:
+        return web.json_response({"error": "database unavailable"}, status=500)
+
+    row = db.execute(
+        "SELECT value FROM meta WHERE key = ?",
+        ("price_list_last_import_at",),
+    ).fetchone()
     last_import_at = row["value"] if row else None
     return web.json_response({"last_import_at": last_import_at})
 
@@ -1325,6 +1330,7 @@ async def request_logger_middleware(request: web.Request, handler):
 
 def create_app() -> web.Application:
     app = web.Application(middlewares=[request_logger_middleware])
+    app["db"] = db
 
     # GUI
     app.router.add_get("/", ui_index)

@@ -138,6 +138,21 @@
       cursor: pointer;
       white-space: nowrap;
     }
+    .overlay-active .orbit-badge,
+    .overlay-active .badge-entity,
+    .overlay-active .promo-badge,
+    .overlay-active .hub-badge,
+    .overlay-active .label,
+    .overlay-active .label-container,
+    .overlay-active .entity-label,
+    .overlay-active .universe-label,
+    .overlay-active .system-label,
+    .overlay-active .planet-label,
+    .overlay-active .star-label,
+    .overlay-active .promo-tag,
+    .overlay-active .hub-tag {
+      display: none !important;
+    }
     .btn.secondary {
       background: #ffffff;
       border: 1px solid var(--accent-color);
@@ -1885,12 +1900,22 @@
     show3DBadges();
   };
 
+  function enableOverlayMode() {
+    document.body.classList.add("overlay-active");
+  }
+
+  function disableOverlayMode() {
+    document.body.classList.remove("overlay-active");
+  }
+
   const showSheet = (el) => {
     el.style.display = "flex";
+    enableOverlayMode();
     hideBadges();
   };
   const hideSheet = (el) => {
     el.style.display = "none";
+    disableOverlayMode();
     showBadges();
   };
 
@@ -3123,6 +3148,7 @@
   }
 
   function hideDailyCouponBox() {
+    disableOverlayMode();
     show3DBadges();
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "none";
@@ -3134,6 +3160,7 @@
     if (dailyCouponBox) {
       dailyCouponBox.style.display = "block";
     }
+    enableOverlayMode();
     hideBadges();
   }
 
@@ -3310,6 +3337,7 @@
       }
 
       showDailyCouponBox();
+      enableOverlayMode();
       hide3DBadges();
     } catch (err) {
       console.error("Errore lettura offerta daily", err);
