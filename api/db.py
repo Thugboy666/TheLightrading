@@ -110,10 +110,44 @@ def init_db() -> None:
                 price_riv10 REAL,
                 price_riv REAL,
                 price_dist REAL,
-                extra_json TEXT
+                extra_json TEXT,
+                price_distributore REAL,
+                price_rivenditore REAL,
+                price_rivenditore10 REAL,
+                qty_stock INTEGER DEFAULT 0,
+                discount_dist_percent REAL DEFAULT 0,
+                discount_riv_percent REAL DEFAULT 0,
+                discount_riv10_percent REAL DEFAULT 0,
+                status TEXT DEFAULT 'attivo'
             )
             """
         )
+        # MIGRAZIONI LISTINO
+        product_cols = {
+            row["name"] for row in cur.execute("PRAGMA table_info(products)").fetchall()
+        }
+        migrations_products = [
+            ("price_distributore", "ALTER TABLE products ADD COLUMN price_distributore REAL"),
+            ("price_rivenditore", "ALTER TABLE products ADD COLUMN price_rivenditore REAL"),
+            ("price_rivenditore10", "ALTER TABLE products ADD COLUMN price_rivenditore10 REAL"),
+            ("qty_stock", "ALTER TABLE products ADD COLUMN qty_stock INTEGER DEFAULT 0"),
+            (
+                "discount_dist_percent",
+                "ALTER TABLE products ADD COLUMN discount_dist_percent REAL DEFAULT 0",
+            ),
+            (
+                "discount_riv_percent",
+                "ALTER TABLE products ADD COLUMN discount_riv_percent REAL DEFAULT 0",
+            ),
+            (
+                "discount_riv10_percent",
+                "ALTER TABLE products ADD COLUMN discount_riv10_percent REAL DEFAULT 0",
+            ),
+            ("status", "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'attivo'"),
+        ]
+        for col, stmt in migrations_products:
+            if col not in product_cols:
+                cur.execute(stmt)
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS price_list_imports (
@@ -166,6 +200,22 @@ def init_db() -> None:
         )
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)"
+        )
+        # OFFERTA DAILY
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_offer (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                sku TEXT NOT NULL,
+                start_at TEXT,
+                end_at TEXT,
+                discount_dist_percent REAL DEFAULT 0,
+                discount_riv_percent REAL DEFAULT 0,
+                discount_riv10_percent REAL DEFAULT 0,
+                coupon_code TEXT,
+                active INTEGER DEFAULT 0
+            )
+            """
         )
         conn.commit()
 
@@ -578,11 +628,36 @@ def insert_discount_rule(
 def upsert_product(data: Dict[str, Any]) -> Dict[str, Any]:
     gallery_json = json.dumps(data.get("gallery") or data.get("gallery_json") or [])
     extra_json = json.dumps(data.get("extra") or data.get("extra_json") or {})
+    payload = {
+        "sku": data.get("sku"),
+        "name": data.get("name"),
+        "image_hd": data.get("image_hd"),
+        "image_thumb": data.get("image_thumb"),
+        "gallery_json": gallery_json,
+        "description_html": data.get("description_html") or data.get("desc_html"),
+        "base_price": data.get("base_price"),
+        "unit": data.get("unit"),
+        "markup_riv10": data.get("markup_riv10"),
+        "markup_riv": data.get("markup_riv"),
+        "markup_dist": data.get("markup_dist"),
+        "price_riv10": data.get("price_riv10") or data.get("price_rivenditore10"),
+        "price_riv": data.get("price_riv") or data.get("price_rivenditore"),
+        "price_dist": data.get("price_dist") or data.get("price_distributore"),
+        "price_distributore": data.get("price_distributore") or data.get("price_dist"),
+        "price_rivenditore": data.get("price_rivenditore") or data.get("price_riv"),
+        "price_rivenditore10": data.get("price_rivenditore10") or data.get("price_riv10"),
+        "qty_stock": data.get("qty_stock", 0),
+        "discount_dist_percent": data.get("discount_dist_percent", 0),
+        "discount_riv_percent": data.get("discount_riv_percent", 0),
+        "discount_riv10_percent": data.get("discount_riv10_percent", 0),
+        "status": data.get("status") or "attivo",
+        "extra_json": extra_json,
+    }
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO products (sku, name, image_hd, image_thumb, gallery_json, description_html, base_price, unit, markup_riv10, markup_riv, markup_dist, price_riv10, price_riv, price_dist, extra_json)
-            VALUES (:sku, :name, :image_hd, :image_thumb, :gallery_json, :description_html, :base_price, :unit, :markup_riv10, :markup_riv, :markup_dist, :price_riv10, :price_riv, :price_dist, :extra_json)
+            INSERT INTO products (sku, name, image_hd, image_thumb, gallery_json, description_html, base_price, unit, markup_riv10, markup_riv, markup_dist, price_riv10, price_riv, price_dist, extra_json, price_distributore, price_rivenditore, price_rivenditore10, qty_stock, discount_dist_percent, discount_riv_percent, discount_riv10_percent, status)
+            VALUES (:sku, :name, :image_hd, :image_thumb, :gallery_json, :description_html, :base_price, :unit, :markup_riv10, :markup_riv, :markup_dist, :price_riv10, :price_riv, :price_dist, :extra_json, :price_distributore, :price_rivenditore, :price_rivenditore10, :qty_stock, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :status)
             ON CONFLICT(sku) DO UPDATE SET
                 name=excluded.name,
                 image_hd=excluded.image_hd,
@@ -597,25 +672,17 @@ def upsert_product(data: Dict[str, Any]) -> Dict[str, Any]:
                 price_riv10=excluded.price_riv10,
                 price_riv=excluded.price_riv,
                 price_dist=excluded.price_dist,
+                price_distributore=excluded.price_distributore,
+                price_rivenditore=excluded.price_rivenditore,
+                price_rivenditore10=excluded.price_rivenditore10,
+                qty_stock=excluded.qty_stock,
+                discount_dist_percent=excluded.discount_dist_percent,
+                discount_riv_percent=excluded.discount_riv_percent,
+                discount_riv10_percent=excluded.discount_riv10_percent,
+                status=excluded.status,
                 extra_json=excluded.extra_json
             """,
-            {
-                "sku": data.get("sku"),
-                "name": data.get("name"),
-                "image_hd": data.get("image_hd"),
-                "image_thumb": data.get("image_thumb"),
-                "gallery_json": gallery_json,
-                "description_html": data.get("description_html"),
-                "base_price": data.get("base_price"),
-                "unit": data.get("unit"),
-                "markup_riv10": data.get("markup_riv10"),
-                "markup_riv": data.get("markup_riv"),
-                "markup_dist": data.get("markup_dist"),
-                "price_riv10": data.get("price_riv10"),
-                "price_riv": data.get("price_riv"),
-                "price_dist": data.get("price_dist"),
-                "extra_json": extra_json,
-            },
+            payload,
         )
         conn.commit()
     return get_product_by_sku(data.get("sku")) or {"sku": data.get("sku")}
@@ -630,6 +697,10 @@ def get_product_by_sku(sku: str) -> Optional[Dict[str, Any]]:
         data = row_to_dict(row)
         data["gallery"] = json.loads(data.get("gallery_json") or "[]")
         data["extra"] = json.loads(data.get("extra_json") or "{}")
+        data["desc_html"] = data.get("description_html")
+        data.setdefault("price_distributore", data.get("price_dist"))
+        data.setdefault("price_rivenditore", data.get("price_riv"))
+        data.setdefault("price_rivenditore10", data.get("price_riv10"))
         data["id"] = data.get("sku")
         return data
 
@@ -642,9 +713,20 @@ def list_products() -> List[Dict[str, Any]]:
             d = row_to_dict(r)
             d["gallery"] = json.loads(d.get("gallery_json") or "[]")
             d["extra"] = json.loads(d.get("extra_json") or "{}")
+            d["desc_html"] = d.get("description_html")
+            d.setdefault("price_distributore", d.get("price_dist"))
+            d.setdefault("price_rivenditore", d.get("price_riv"))
+            d.setdefault("price_rivenditore10", d.get("price_riv10"))
             d["id"] = d.get("sku")
             rows.append(d)
         return rows
+
+
+def delete_product(sku: str) -> int:
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM products WHERE sku = ?", (sku,))
+        conn.commit()
+        return cur.rowcount
 
 
 def save_import_metadata(file_name: str, total_products: int) -> None:
@@ -654,6 +736,57 @@ def save_import_metadata(file_name: str, total_products: int) -> None:
             "INSERT INTO price_list_imports (imported_at, file_name, total_products) VALUES (?, ?, ?)",
             (now, file_name, total_products),
         )
+        conn.commit()
+
+
+# ========== DAILY OFFER ========== #
+
+
+def get_daily_offer() -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cur = conn.execute("SELECT * FROM daily_offer WHERE id = 1")
+        row = cur.fetchone()
+        if not row:
+            return None
+        data = row_to_dict(row)
+        data["active"] = bool(data.get("active"))
+        return data
+
+
+def save_daily_offer(data: Dict[str, Any]) -> Dict[str, Any]:
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO daily_offer (id, sku, start_at, end_at, discount_dist_percent, discount_riv_percent, discount_riv10_percent, coupon_code, active)
+            VALUES (1, :sku, :start_at, :end_at, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :coupon_code, :active)
+            ON CONFLICT(id) DO UPDATE SET
+                sku=excluded.sku,
+                start_at=excluded.start_at,
+                end_at=excluded.end_at,
+                discount_dist_percent=excluded.discount_dist_percent,
+                discount_riv_percent=excluded.discount_riv_percent,
+                discount_riv10_percent=excluded.discount_riv10_percent,
+                coupon_code=excluded.coupon_code,
+                active=excluded.active
+            """,
+            {
+                "sku": data.get("sku"),
+                "start_at": data.get("start_at"),
+                "end_at": data.get("end_at"),
+                "discount_dist_percent": data.get("discount_dist_percent", 0),
+                "discount_riv_percent": data.get("discount_riv_percent", 0),
+                "discount_riv10_percent": data.get("discount_riv10_percent", 0),
+                "coupon_code": data.get("coupon_code"),
+                "active": 1 if data.get("active") else 0,
+            },
+        )
+        conn.commit()
+    return get_daily_offer() or {}
+
+
+def delete_daily_offer() -> None:
+    with get_db() as conn:
+        conn.execute("DELETE FROM daily_offer WHERE id = 1")
         conn.commit()
 
 

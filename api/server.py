@@ -21,8 +21,10 @@ from .db import (
     create_user,
     add_promo_points,
     delete_client,
+    delete_product,
     get_client_by_email,
     find_client_by_email_or_piva,
+    get_daily_offer,
     get_product_by_sku,
     get_promo_summary,
     get_session,
@@ -37,8 +39,10 @@ from .db import (
     list_products,
     save_client,
     save_import_metadata,
+    save_daily_offer,
     update_user_password,
     upsert_product,
+    delete_daily_offer,
 )
 
 # ================== CONFIG BASE ==================
@@ -167,12 +171,21 @@ def discount_rules_to_configs() -> list[dict]:
 
 
 def pick_price_for_segment(product: dict, segment: str, fallback_base: float) -> float:
-    if segment == "distributore" and product.get("price_dist") is not None:
-        return float(product.get("price_dist"))
-    if segment == "rivenditore" and product.get("price_riv") is not None:
-        return float(product.get("price_riv"))
-    if segment == "rivenditore10" and product.get("price_riv10") is not None:
-        return float(product.get("price_riv10"))
+    if segment == "distributore":
+        if product.get("price_distributore") is not None:
+            return float(product.get("price_distributore"))
+        if product.get("price_dist") is not None:
+            return float(product.get("price_dist"))
+    if segment == "rivenditore":
+        if product.get("price_rivenditore") is not None:
+            return float(product.get("price_rivenditore"))
+        if product.get("price_riv") is not None:
+            return float(product.get("price_riv"))
+    if segment == "rivenditore10":
+        if product.get("price_rivenditore10") is not None:
+            return float(product.get("price_rivenditore10"))
+        if product.get("price_riv10") is not None:
+            return float(product.get("price_riv10"))
     return float(product.get("base_price") or fallback_base or 0)
 
 
@@ -864,20 +877,23 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
             continue
         sku = value_from_row(raw, "sku", 0) or uuid.uuid4().hex[:12]
         name = value_from_row(raw, "name", 1) or value_from_row(raw, "prodotto", 1)
-        description = value_from_row(raw, "description", 2)
-        base_price = value_from_row(raw, "prezzo_base", 3) or value_from_row(raw, "base_price", 3) or 0
-        price_riv = value_from_row(raw, "price_riv", 4)
-        price_riv10 = value_from_row(raw, "price_riv10", 5)
-        price_dist = value_from_row(raw, "price_dist", 6)
+        description = value_from_row(raw, "description", 2) or value_from_row(raw, "descrizione", 2)
+        price_distributore = value_from_row(raw, "prezzo_distributore", 3)
+        price_rivenditore = value_from_row(raw, "prezzo_rivenditore", 4)
+        price_rivenditore10 = value_from_row(raw, "prezzo_rivenditore10", 5)
+        qty_stock = value_from_row(raw, "quantità_stock", 6) or value_from_row(raw, "quantita_stock", 6) or value_from_row(raw, "qty_stock", 6)
+        status = value_from_row(raw, "status", 7) or "attivo"
 
         product = {
             "sku": str(sku),
             "name": name or f"Prodotto {sku}",
             "description_html": description,
-            "base_price": float(base_price or 0),
-            "price_riv": float(price_riv or 0) if price_riv is not None else None,
-            "price_riv10": float(price_riv10 or 0) if price_riv10 is not None else None,
-            "price_dist": float(price_dist or 0) if price_dist is not None else None,
+            "base_price": price_distributore or price_rivenditore or price_rivenditore10 or 0,
+            "price_distributore": float(price_distributore or 0) if price_distributore is not None else None,
+            "price_rivenditore": float(price_rivenditore or 0) if price_rivenditore is not None else None,
+            "price_rivenditore10": float(price_rivenditore10 or 0) if price_rivenditore10 is not None else None,
+            "qty_stock": int(qty_stock or 0),
+            "status": str(status),
             "gallery": [],
             "extra": {},
         }
@@ -891,6 +907,110 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
         imported_count=len(products),
     )
     return web.json_response({"status": "ok", "products": products})
+
+
+async def admin_product_save(request: web.Request) -> web.Response:
+    body = await request.json()
+    product = {
+        "sku": body.get("sku") or str(uuid.uuid4()),
+        "name": body.get("name"),
+        "image_hd": body.get("image_hd"),
+        "image_thumb": body.get("image_thumb"),
+        "gallery": body.get("gallery") or [],
+        "description_html": body.get("description_html") or body.get("desc_html"),
+        "base_price": body.get("base_price"),
+        "unit": body.get("unit"),
+        "markup_riv10": body.get("markup_riv10"),
+        "markup_riv": body.get("markup_riv"),
+        "markup_dist": body.get("markup_dist"),
+        "price_distributore": body.get("price_distributore"),
+        "price_rivenditore": body.get("price_rivenditore"),
+        "price_rivenditore10": body.get("price_rivenditore10"),
+        "qty_stock": body.get("qty_stock", 0),
+        "discount_dist_percent": body.get("discount_dist_percent", 0),
+        "discount_riv_percent": body.get("discount_riv_percent", 0),
+        "discount_riv10_percent": body.get("discount_riv10_percent", 0),
+        "status": body.get("status") or "attivo",
+    }
+    saved = upsert_product(product)
+    return web.json_response(saved)
+
+
+async def admin_product_delete(request: web.Request) -> web.Response:
+    sku = request.match_info.get("sku")
+    if not sku:
+        return web.json_response({"error": "missing_sku"}, status=400)
+    deleted = delete_product(sku)
+    if not deleted:
+        return web.json_response({"status": "not_found"}, status=404)
+    return web.json_response({"status": "ok"})
+
+
+def _enrich_daily_offer(record: Optional[dict]) -> Optional[dict]:
+    if not record:
+        return None
+    product = get_product_by_sku(record.get("sku"))
+    if product:
+        record["product_name"] = product.get("name")
+    return record
+
+
+async def admin_daily_offer_get(request: web.Request) -> web.Response:
+    offer = _enrich_daily_offer(get_daily_offer())
+    if not offer:
+        return web.json_response({})
+    return web.json_response(offer)
+
+
+async def admin_daily_offer_save(request: web.Request) -> web.Response:
+    body = await request.json()
+    offer = save_daily_offer(body)
+    enriched = _enrich_daily_offer(offer)
+    return web.json_response(enriched)
+
+
+async def admin_daily_offer_delete(request: web.Request) -> web.Response:
+    delete_daily_offer()
+    return web.json_response({"status": "ok"})
+
+
+async def public_daily_offer(request: web.Request) -> web.Response:
+    offer = get_daily_offer()
+    if not offer or not offer.get("active"):
+        return web.json_response({"active": False})
+
+    now = datetime.now(timezone.utc)
+    start_at = offer.get("start_at")
+    end_at = offer.get("end_at")
+
+    def parse_dt(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    start_dt = parse_dt(start_at)
+    end_dt = parse_dt(end_at)
+    if start_dt and now < start_dt:
+        return web.json_response({"active": False})
+    if end_dt and now > end_dt:
+        return web.json_response({"active": False})
+
+    product = get_product_by_sku(offer.get("sku"))
+    response = {
+        "active": True,
+        "sku": offer.get("sku"),
+        "product_name": product.get("name") if product else offer.get("product_name"),
+        "coupon_code": offer.get("coupon_code"),
+        "start_at": start_at,
+        "end_at": end_at,
+        "discount_dist_percent": offer.get("discount_dist_percent", 0),
+        "discount_riv_percent": offer.get("discount_riv_percent", 0),
+        "discount_riv10_percent": offer.get("discount_riv10_percent", 0),
+    }
+    return web.json_response(response)
 
 
 # ================== LLM LOCALE ==================
@@ -1054,7 +1174,15 @@ def create_app() -> web.Application:
     app.router.add_get("/admin/offers/all", admin_offers_all)
     app.router.add_post("/admin/offers/save", admin_offers_save)
     app.router.add_get("/admin/products/all", admin_products_all)
+    app.router.add_post("/admin/products/save", admin_product_save)
+    app.router.add_delete("/admin/products/{sku}", admin_product_delete)
     app.router.add_post("/admin/price_list/import", admin_price_list_import)
+    app.router.add_get("/admin/daily-offer", admin_daily_offer_get)
+    app.router.add_post("/admin/daily-offer", admin_daily_offer_save)
+    app.router.add_delete("/admin/daily-offer", admin_daily_offer_delete)
+
+    # PUBLIC OFFER
+    app.router.add_get("/offer/daily", public_daily_offer)
 
     # LLM
     app.router.add_post("/llm/complete", llm_complete)

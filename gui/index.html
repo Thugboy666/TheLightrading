@@ -82,6 +82,39 @@
       align-items: center;
       flex-shrink: 0;
     }
+    .daily-offer-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border-width: 1px;
+      max-width: 220px;
+      text-align: left;
+    }
+
+    .daily-offer-icon {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .daily-offer-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+
+    .daily-offer-line1 {
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .daily-offer-line2 {
+      font-size: 9px;
+      opacity: 0.8;
+    }
     .pill {
       font-size: 10px;
       padding: 4px 8px;
@@ -614,6 +647,16 @@
       <div id="brand-sub">powered by thelight24</div>
       <div id="brand-title"></div>
     </div>
+
+    <button class="btn daily-offer-btn" id="btn-daily-offer">
+      <span class="daily-offer-icon">
+        <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
+      </span>
+      <span class="daily-offer-text">
+        <span class="daily-offer-line1">Offerta daily</span>
+        <span class="daily-offer-line2">prodotto del giorno in sconto</span>
+      </span>
+    </button>
     <div id="user-panel">
       <div class="pill" id="tier-pill">
         <span class="label">Listino:</span>
@@ -642,6 +685,28 @@
     <div id="zoom-level">Livello: GALASSIA</div>
     <div id="location-path">Posizione: /</div>
     <div id="hint">Pinch/zoom o tap per esplorare. Tocca sistemi, stelle, pianeti e satelliti per scendere di livello.</div>
+
+    <div id="daily-coupon-box" class="coupon-box" style="display:none; margin-top:6px; padding:6px; border-radius:8px; border:1px solid var(--accent-color); background:#fffbe6;">
+      <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Offerta daily – prodotto del giorno</div>
+      <div id="daily-coupon-code" style="font-size:16px;font-weight:700;margin-bottom:4px;"></div>
+      <div id="daily-coupon-product" style="font-size:11px;margin-bottom:4px;"></div>
+      <div id="daily-coupon-validity" style="font-size:10px;opacity:0.7;margin-bottom:4px;"></div>
+
+      <div style="font-size:10px;margin-bottom:6px;">
+        <strong>IMPORTANTE:</strong> per utilizzare il coupon devi:
+        <ol style="margin:4px 0 0 14px;padding:0;">
+          <li>Essere già loggato sul sito Ormanet.</li>
+          <li>Inserire nel carrello il prodotto corrispondente all'offerta daily.</li>
+          <li>Incollare il codice coupon nel campo dedicato, nella pagina carrello.</li>
+          <li>Lo sconto verrà applicato solo se l'ordine verrà evaso nella stessa giornata.</li>
+        </ol>
+      </div>
+
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="btn" id="btn-copy-coupon">Copia coupon</button>
+        <button class="btn" id="btn-go-cart">Vai al tuo carrello</button>
+      </div>
+    </div>
 
     <div id="entity-card">
       <div id="entity-type"></div>
@@ -1026,6 +1091,60 @@
         </div>
       </div>
 
+      <h2>Prezzi per listino</h2>
+      <p>Imposta i prezzi finali per ciascun listino. Questi valori possono differire dal calcolo teorico dei ricarichi.</p>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>Prezzo distributore</label>
+          <input id="prod-price-dist-final" type="number" min="0" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Prezzo rivenditore</label>
+          <input id="prod-price-riv-final" type="number" min="0" step="0.01" />
+        </div>
+      </div>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>Prezzo rivenditore +10%</label>
+          <input id="prod-price-riv10-final" type="number" min="0" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Quantità stock</label>
+          <input id="prod-stock-qty" type="number" min="0" step="1" />
+        </div>
+      </div>
+
+      <h2>Sconti di prodotto per listino (%)</h2>
+      <p>Queste percentuali rappresentano lo sconto predefinito associato al prodotto per ciascun listino.</p>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>% sconto distributore</label>
+          <input id="prod-discount-dist" type="number" step="0.1" />
+        </div>
+        <div class="field">
+          <label>% sconto rivenditore</label>
+          <input id="prod-discount-riv" type="number" step="0.1" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>% sconto rivenditore +10%</label>
+        <input id="prod-discount-riv10" type="number" step="0.1" />
+      </div>
+
+      <div class="field">
+        <label>Status prodotto</label>
+        <select id="prod-status">
+          <option value="attivo">Attivo</option>
+          <option value="non_disponibile">Non disponibile</option>
+          <option value="in_arrivo">In arrivo</option>
+          <option value="fuori_listino">Fuori listino</option>
+        </select>
+      </div>
+
       <div class="sheet-actions">
         <button class="btn secondary" id="btn-prod-cancel">Annulla</button>
         <button class="btn" id="btn-prod-save">Salva scheda</button>
@@ -1192,6 +1311,63 @@
           <label><input id="mini-offer-toggle" type="checkbox" /> Mostra mini offerte (Admin)</label>
         </div>
         <div class="html-preview" id="mini-offer-panel"></div>
+
+        <hr style="margin:12px 0;" />
+        <h3 style="margin:4px 0;">Offerta Daily</h3>
+
+        <div class="field">
+          <label>Prodotto in offerta daily</label>
+          <select id="daily-product-select"></select>
+          <small>Seleziona uno dei prodotti caricati da listino.</small>
+        </div>
+
+        <div class="two-cols">
+          <div class="field">
+            <label>Data/ora inizio</label>
+            <input id="daily-start" type="datetime-local" />
+          </div>
+          <div class="field">
+            <label>Data/ora fine</label>
+            <input id="daily-end" type="datetime-local" />
+          </div>
+        </div>
+
+        <div class="two-cols">
+          <div class="field">
+            <label>% sconto distributore</label>
+            <input id="daily-discount-dist" type="number" step="0.1" />
+          </div>
+          <div class="field">
+            <label>% sconto rivenditore</label>
+            <input id="daily-discount-riv" type="number" step="0.1" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>% sconto rivenditore +10%</label>
+          <input id="daily-discount-riv10" type="number" step="0.1" />
+        </div>
+
+        <div class="field">
+          <label>Codice coupon (da mostrare ai clienti)</label>
+          <input id="daily-coupon-code" type="text" placeholder="Es. DAILY-ORMANET-10" />
+        </div>
+
+        <div class="field">
+          <label>Stato offerta</label>
+          <select id="daily-active-flag">
+            <option value="1">On (attiva)</option>
+            <option value="0">Off (spenta)</option>
+          </select>
+        </div>
+
+        <div class="sheet-actions">
+          <button class="btn" id="btn-daily-save">Salva / Aggiorna daily</button>
+          <button class="btn secondary" id="btn-daily-toggle">Attiva / Disattiva</button>
+          <button class="btn secondary" id="btn-daily-delete">Elimina daily</button>
+        </div>
+
+        <div class="html-preview" id="daily-summary" style="margin-top:6px;"></div>
       </div>
       <div id="admin-section-import" style="display:none;">
         <h3 style="margin:4px 0;">Import Listino .XLSX</h3>
@@ -1203,7 +1379,14 @@
         <div class="sheet-actions">
           <button class="btn" id="btn-price-list-upload">Carica listino</button>
         </div>
-        <div class="html-preview" id="price-list-preview"></div>
+        <div class="field" style="margin-top:8px;">
+          <label>Ricerca prodotti</label>
+          <input id="price-list-search" type="text" placeholder="Cerca per nome, descrizione o SKU (match in qualsiasi punto della stringa)" />
+        </div>
+
+        <div class="html-preview" id="price-list-table-wrapper" style="max-height:220px; overflow:auto; margin-top:6px;">
+          <!-- Tabella listino generata via JS -->
+        </div>
       </div>
       <div id="admin-section-promo" style="display:none;">
         <h3 style="margin:4px 0;">Promo Natale / Biglietto regalo</h3>
@@ -1303,6 +1486,7 @@
 
   let promoConfig = { start_date: null, end_date: null };
   let priceList = [];
+  let dailyOffer = null;
   let clients = [];
   const offersUniverse = [
     {
@@ -1427,6 +1611,14 @@
   const entityAdminActions = document.getElementById("entity-admin-actions");
   const btnAdmin = document.getElementById("btn-admin");
 
+  const btnDailyOffer = document.getElementById("btn-daily-offer");
+  const dailyCouponBox = document.getElementById("daily-coupon-box");
+  const dailyCouponCodeEl = document.getElementById("daily-coupon-code");
+  const dailyCouponProductEl = document.getElementById("daily-coupon-product");
+  const dailyCouponValidityEl = document.getElementById("daily-coupon-validity");
+  const btnCopyCoupon = document.getElementById("btn-copy-coupon");
+  const btnGoCart = document.getElementById("btn-go-cart");
+
   const sheetRegister = document.getElementById("sheet-register");
   const sheetLogin = document.getElementById("sheet-login");
   const sheetAccount = document.getElementById("sheet-account");
@@ -1473,6 +1665,15 @@
   const markupRivInput = document.getElementById("prod-markup-riv");
   const markupDistInput = document.getElementById("prod-markup-dist");
 
+  const priceDistFinalInput = document.getElementById("prod-price-dist-final");
+  const priceRivFinalInput = document.getElementById("prod-price-riv-final");
+  const priceRiv10FinalInput = document.getElementById("prod-price-riv10-final");
+  const stockQtyInput = document.getElementById("prod-stock-qty");
+  const discountDistInput = document.getElementById("prod-discount-dist");
+  const discountRivInput = document.getElementById("prod-discount-riv");
+  const discountRiv10Input = document.getElementById("prod-discount-riv10");
+  const statusInput = document.getElementById("prod-status");
+
   const priceRiv10Output = document.getElementById("prod-price-riv10");
   const priceRivOutput = document.getElementById("prod-price-riv");
   const priceDistOutput = document.getElementById("prod-price-dist");
@@ -1515,7 +1716,8 @@
   const miniOfferPanel = document.getElementById("mini-offer-panel");
   const priceListFileInput = document.getElementById("price-list-file");
   const btnPriceListUpload = document.getElementById("btn-price-list-upload");
-  const priceListPreview = document.getElementById("price-list-preview");
+  const priceListSearchInput = document.getElementById("price-list-search");
+  const priceListTableWrapper = document.getElementById("price-list-table-wrapper");
   const promoClientsFileInput = document.getElementById("promo-clients-file");
   const btnPromoClientsUpload = document.getElementById("btn-promo-clients-upload");
   const promoClientsPreview = document.getElementById("promo-clients-preview");
@@ -1528,6 +1730,19 @@
   const promoEndDateInput = document.getElementById("promo-end-date");
   const promoSummaryBox = document.getElementById("promo-summary");
   const promoRulesStatic = document.getElementById("promo-rules-static");
+
+  const dailyProductSelect = document.getElementById("daily-product-select");
+  const dailyStartInput = document.getElementById("daily-start");
+  const dailyEndInput = document.getElementById("daily-end");
+  const dailyDiscountDistInput = document.getElementById("daily-discount-dist");
+  const dailyDiscountRivInput = document.getElementById("daily-discount-riv");
+  const dailyDiscountRiv10Input = document.getElementById("daily-discount-riv10");
+  const dailyCouponCodeInput = document.getElementById("daily-coupon-code");
+  const dailyActiveFlagInput = document.getElementById("daily-active-flag");
+  const dailySummaryBox = document.getElementById("daily-summary");
+  const btnDailySave = document.getElementById("btn-daily-save");
+  const btnDailyToggle = document.getElementById("btn-daily-toggle");
+  const btnDailyDelete = document.getElementById("btn-daily-delete");
 
   const btnBack = document.getElementById("btn-back");
   const btnOpenLlm = document.getElementById("btn-open-llm");
@@ -1632,6 +1847,56 @@
     });
   }
   btnPriceListUpload.addEventListener("click", uploadPriceList);
+  if (priceListSearchInput) {
+    priceListSearchInput.addEventListener("input", (e) => {
+      renderPriceListTable(e.target.value);
+    });
+  }
+  if (priceListTableWrapper) {
+    priceListTableWrapper.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const action = btn.getAttribute("data-action");
+      const sku = btn.getAttribute("data-sku");
+      if (!action || !sku) return;
+
+      const product = priceList.find((p) => String(p.sku) === String(sku));
+      if (!product) {
+        showToast("Prodotto non trovato in memoria.");
+        return;
+      }
+
+      if (action === "edit-product") {
+        if (window.TheLightUniverse && typeof window.TheLightUniverse.openProductEditor === "function") {
+          window.TheLightUniverse.openProductEditor(product);
+        }
+        return;
+      }
+
+      if (action === "delete-product") {
+        const ok = window.confirm(`Eliminare definitivamente il prodotto ${sku}?`);
+        if (!ok) return;
+
+        try {
+          const token = currentUser?.token;
+          const res = await fetch(`${BASE_URL}/admin/products/${encodeURIComponent(sku)}`, {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            }
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          priceList = priceList.filter((p) => String(p.sku) !== String(sku));
+          renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+          showToast("Prodotto eliminato dal listino.");
+        } catch (err) {
+          console.error("Errore eliminazione prodotto", err);
+          showToast("Errore durante l'eliminazione del prodotto.");
+        }
+      }
+    });
+  }
   if (btnPromoClientsUpload) {
     btnPromoClientsUpload.addEventListener("click", uploadPromoClients);
   }
@@ -1647,6 +1912,139 @@
       if (id) {
         fetchPromoSummary(id);
       }
+    });
+  }
+  if (btnDailySave) {
+    btnDailySave.addEventListener("click", async () => {
+      const sku = dailyProductSelect.value;
+      if (!sku) {
+        showToast("Seleziona un prodotto per l'offerta daily.");
+        return;
+      }
+      const token = currentUser?.token;
+      const payload = {
+        sku,
+        start_at: fromInputDateTimeLocal(dailyStartInput.value),
+        end_at: fromInputDateTimeLocal(dailyEndInput.value),
+        discount_dist_percent: dailyDiscountDistInput.value ? Number(dailyDiscountDistInput.value) : 0,
+        discount_riv_percent: dailyDiscountRivInput.value ? Number(dailyDiscountRivInput.value) : 0,
+        discount_riv10_percent: dailyDiscountRiv10Input.value ? Number(dailyDiscountRiv10Input.value) : 0,
+        coupon_code: dailyCouponCodeInput.value.trim(),
+        active: dailyActiveFlagInput.value === "1"
+      };
+
+      try {
+        const res = await fetch(BASE_URL + "/admin/daily-offer", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const json = await res.json();
+        dailyOffer = json || payload;
+        const product = priceList.find((p) => String(p.sku) === String(sku));
+        if (product) {
+          dailyOffer.product_name = product.name || dailyOffer.product_name;
+        }
+        fillDailyFormFromOffer();
+        showToast("Offerta daily salvata.");
+      } catch (err) {
+        console.error("Errore salvataggio daily", err);
+        showToast("Errore durante il salvataggio dell'offerta daily.");
+      }
+    });
+  }
+  if (btnDailyToggle) {
+    btnDailyToggle.addEventListener("click", async () => {
+      if (!dailyOffer) {
+        showToast("Nessuna offerta daily da attivare/disattivare.");
+        return;
+      }
+      const token = currentUser?.token;
+      const newActive = !dailyOffer.active;
+      try {
+        const res = await fetch(BASE_URL + "/admin/daily-offer", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ ...dailyOffer, active: newActive })
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const json = await res.json();
+        dailyOffer = json || { ...dailyOffer, active: newActive };
+        fillDailyFormFromOffer();
+        showToast(newActive ? "Offerta daily attivata." : "Offerta daily disattivata.");
+      } catch (err) {
+        console.error("Errore toggle daily", err);
+        showToast("Errore attivazione/disattivazione offerta daily.");
+      }
+    });
+  }
+  if (btnDailyDelete) {
+    btnDailyDelete.addEventListener("click", async () => {
+      if (!dailyOffer) {
+        showToast("Nessuna offerta daily da eliminare.");
+        return;
+      }
+      const ok = window.confirm("Eliminare definitivamente l'offerta daily?");
+      if (!ok) return;
+      const token = currentUser?.token;
+      try {
+        const res = await fetch(BASE_URL + "/admin/daily-offer", {
+          method: "DELETE",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+        if (!res.ok && res.status !== 404) throw new Error("HTTP " + res.status);
+        dailyOffer = null;
+        fillDailyFormFromOffer();
+        showToast("Offerta daily eliminata.");
+      } catch (err) {
+        console.error("Errore eliminazione daily", err);
+        showToast("Errore durante l'eliminazione dell'offerta daily.");
+      }
+    });
+  }
+  if (btnDailyOffer) {
+    btnDailyOffer.addEventListener("click", () => {
+      openDailyOfferForUser();
+    });
+  }
+  if (btnCopyCoupon && dailyCouponCodeEl) {
+    btnCopyCoupon.addEventListener("click", async () => {
+      const code = (dailyCouponCodeEl.textContent || "").trim();
+      if (!code) {
+        showToast("Nessun coupon da copiare.");
+        return;
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(code);
+          showToast("Codice coupon copiato.");
+        } else {
+          const temp = document.createElement("textarea");
+          temp.value = code;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand("copy");
+          document.body.removeChild(temp);
+          showToast("Codice coupon copiato.");
+        }
+      } catch (err) {
+        console.error("Errore copia coupon", err);
+        showToast("Non è stato possibile copiare il coupon.");
+      }
+    });
+  }
+  if (btnGoCart) {
+    btnGoCart.addEventListener("click", () => {
+      window.open("https://www.ormanet.it/default.asp?cmd=showCart", "_blank");
     });
   }
 
@@ -1827,6 +2225,98 @@
     if (promoClientSelect.value) {
       fetchPromoSummary(promoClientSelect.value);
     }
+  }
+
+  function refreshDailyProductSelect() {
+    if (!dailyProductSelect) return;
+    dailyProductSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Seleziona prodotto…";
+    dailyProductSelect.appendChild(placeholder);
+
+    (priceList || []).forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.sku;
+      opt.textContent = `${p.sku} – ${p.name || ""}`;
+      dailyProductSelect.appendChild(opt);
+    });
+
+    if (dailyOffer && dailyOffer.sku) {
+      dailyProductSelect.value = dailyOffer.sku;
+    }
+  }
+
+  function toInputDateTimeLocal(value) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  }
+
+  function fromInputDateTimeLocal(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+
+  function renderDailySummary() {
+    if (!dailySummaryBox) return;
+    if (!dailyOffer) {
+      dailySummaryBox.innerHTML = "<div style=\"font-size:11px;opacity:0.7;\">Nessuna offerta daily configurata.</div>";
+      return;
+    }
+    const activeLabel = dailyOffer.active ? "ATTIVA" : "SPENTA";
+    const sku = dailyOffer.sku || "-";
+    const name = dailyOffer.product_name || "-";
+    const startLabel = dailyOffer.start_at || "-";
+    const endLabel = dailyOffer.end_at || "-";
+    const coupon = dailyOffer.coupon_code || "-";
+
+    dailySummaryBox.innerHTML = `
+    <div style="font-size:11px;">
+      <div><strong>Stato:</strong> ${activeLabel}</div>
+      <div><strong>Prodotto:</strong> ${sku} – ${name}</div>
+      <div><strong>Periodo:</strong> ${startLabel} → ${endLabel}</div>
+      <div><strong>Coupon:</strong> ${coupon}</div>
+      <div><strong>Sconti:</strong> Dist ${dailyOffer.discount_dist_percent || 0}% · Riv ${dailyOffer.discount_riv_percent || 0}% · Riv+10 ${dailyOffer.discount_riv10_percent || 0}%</div>
+    </div>
+  `;
+  }
+
+  function fillDailyFormFromOffer() {
+    if (!dailyOffer) {
+      if (dailyProductSelect) dailyProductSelect.value = "";
+      if (dailyStartInput) dailyStartInput.value = "";
+      if (dailyEndInput) dailyEndInput.value = "";
+      if (dailyDiscountDistInput) dailyDiscountDistInput.value = "";
+      if (dailyDiscountRivInput) dailyDiscountRivInput.value = "";
+      if (dailyDiscountRiv10Input) dailyDiscountRiv10Input.value = "";
+      if (dailyCouponCodeInput) dailyCouponCodeInput.value = "";
+      if (dailyActiveFlagInput) dailyActiveFlagInput.value = "0";
+      renderDailySummary();
+      return;
+    }
+
+    refreshDailyProductSelect();
+    if (dailyOffer.sku && dailyProductSelect) dailyProductSelect.value = dailyOffer.sku;
+    if (dailyStartInput) dailyStartInput.value = toInputDateTimeLocal(dailyOffer.start_at);
+    if (dailyEndInput) dailyEndInput.value = toInputDateTimeLocal(dailyOffer.end_at);
+    if (dailyDiscountDistInput)
+      dailyDiscountDistInput.value = dailyOffer.discount_dist_percent != null ? dailyOffer.discount_dist_percent : "";
+    if (dailyDiscountRivInput)
+      dailyDiscountRivInput.value = dailyOffer.discount_riv_percent != null ? dailyOffer.discount_riv_percent : "";
+    if (dailyDiscountRiv10Input)
+      dailyDiscountRiv10Input.value = dailyOffer.discount_riv10_percent != null ? dailyOffer.discount_riv10_percent : "";
+    if (dailyCouponCodeInput) dailyCouponCodeInput.value = dailyOffer.coupon_code || "";
+    if (dailyActiveFlagInput) dailyActiveFlagInput.value = dailyOffer.active ? "1" : "0";
+    renderDailySummary();
   }
 
   function setPromoConfig(cfg = {}) {
@@ -2178,6 +2668,69 @@
     renderDiscountPreview();
   }
 
+  function renderPriceListTable(filterText = "") {
+    if (!priceListTableWrapper) return;
+    const term = (filterText || "").toLowerCase().trim();
+
+    const filtered = priceList.filter((p) => {
+      const sku = (p.sku || "").toLowerCase();
+      const name = (p.name || "").toLowerCase();
+      const desc = (p.desc || p.description || p.description_html || "").toLowerCase();
+      if (!term) return true;
+      return sku.includes(term) || name.includes(term) || desc.includes(term);
+    });
+
+    if (!filtered.length) {
+      priceListTableWrapper.innerHTML = "<div style=\"font-size:11px;opacity:0.7;\">Nessun prodotto trovato.</div>";
+      return;
+    }
+
+    const rows = filtered
+      .map((p) => {
+        const sku = p.sku || "";
+        const name = p.name || "";
+        const base = typeof p.base_price === "number" ? p.base_price : p.base_price || "";
+        const dist = typeof p.price_distributore === "number" ? p.price_distributore : p.price_distributore || p.price_dist || "";
+        const riv = typeof p.price_rivenditore === "number" ? p.price_rivenditore : p.price_rivenditore || p.price_riv || "";
+        const riv10 = typeof p.price_rivenditore10 === "number" ? p.price_rivenditore10 : p.price_rivenditore10 || p.price_riv10 || "";
+
+        return `
+      <tr data-sku="${sku}">
+        <td>${sku}</td>
+        <td>${name}</td>
+        <td style="text-align:right;">${base}</td>
+        <td style="text-align:right;">${dist}</td>
+        <td style="text-align:right;">${riv}</td>
+        <td style="text-align:right;">${riv10}</td>
+        <td style="text-align:right;">
+          <button class="btn" data-action="edit-product" data-sku="${sku}" style="font-size:10px;padding:2px 6px;">Modifica</button>
+          <button class="btn secondary" data-action="delete-product" data-sku="${sku}" style="font-size:10px;padding:2px 6px;margin-left:4px;">Elimina</button>
+        </td>
+      </tr>
+    `;
+      })
+      .join("");
+
+    priceListTableWrapper.innerHTML = `
+    <table style="width:100%; border-collapse:collapse; font-size:11px;">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nome</th>
+          <th>Base</th>
+          <th>Dist.</th>
+          <th>Riv.</th>
+          <th>Riv+10</th>
+          <th style="text-align:right;">Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  `;
+  }
+
   async function uploadPriceList() {
     const file = priceListFileInput.files[0];
     if (!file) {
@@ -2193,10 +2746,21 @@
     fd.append("file", file);
     try {
       const data = await importPriceList(fd);
-      priceList = data?.products || [];
-      priceListPreview.textContent = `Prodotti caricati: ${priceList.length}`;
+      if (data && Array.isArray(data.products)) {
+        priceList = data.products;
+      }
+      renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+      showToast("Listino importato correttamente.");
     } catch (e) {
-      priceListPreview.textContent = "Listino caricato localmente";
+      try {
+        const refreshed = await fetch(BASE_URL + "/admin/products/all", { headers: buildAuthHeaders() });
+        const resJson = await refreshed.json();
+        priceList = resJson.products || [];
+      } catch (err) {
+        console.error("Errore refresh listino", err);
+      }
+      renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+      showToast("Listino caricato localmente");
     }
   }
 
@@ -2315,6 +2879,52 @@
     const finalPrice = Math.max(0, basePrice - discountValue);
     if (priceContainer) {
       priceContainer.textContent = `€${finalPrice.toFixed(2)}`;
+    }
+  }
+
+  function hideDailyCouponBox() {
+    if (dailyCouponBox) {
+      dailyCouponBox.style.display = "none";
+    }
+  }
+
+  function showDailyCouponBox() {
+    if (dailyCouponBox) {
+      dailyCouponBox.style.display = "block";
+    }
+  }
+
+  async function openDailyOfferForUser() {
+    try {
+      const res = await fetch(BASE_URL + "/offer/daily");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (!data.active) {
+        hideDailyCouponBox();
+        showToast("Nessuna offerta daily attiva al momento.");
+        return;
+      }
+
+      const code = data.coupon_code || "";
+      const name = data.product_name || data.sku || "";
+      const start = data.start_at || null;
+      const end = data.end_at || null;
+
+      if (dailyCouponCodeEl) dailyCouponCodeEl.textContent = code;
+      if (dailyCouponProductEl) dailyCouponProductEl.textContent = name ? `Prodotto: ${name}` : "";
+      if (dailyCouponValidityEl) {
+        if (start || end) {
+          dailyCouponValidityEl.textContent = `Valida oggi, entro i limiti di orario impostati per l'offerta.`;
+        } else {
+          dailyCouponValidityEl.textContent = "";
+        }
+      }
+
+      showDailyCouponBox();
+    } catch (err) {
+      console.error("Errore lettura offerta daily", err);
+      hideDailyCouponBox();
+      showToast("Errore nel recupero dell'offerta daily.");
     }
   }
 
@@ -2716,41 +3326,44 @@
     priceDistOutput.value = base ? formatPrice(pDist) : "";
   }
 
-  function openProductEditor() {
-    if (!currentUser || currentUser.name !== "GOD ADMIN") {
-      showToast("Solo GOD ADMIN può modificare le schede.", false);
-      return;
-    }
-    if (!currentEntity || currentEntityType !== "product") {
+  function openProductEditor(product) {
+    const prod = product || currentEntity;
+    if (!prod || (currentEntityType !== "product" && !product)) {
       showToast("Seleziona un prodotto nella galassia.", false);
       return;
     }
 
-    const prod = currentEntity;
     editingProduct = prod;
 
     skuInput.value = prod.sku || "";
     nameInput.value = prod.name || "";
-    imageHdInput.value = prod.image_hd || prod.image || "";
+    imageHdInput.value = prod.image_hd || prod.image_url || prod.image || "";
     imageThumbInput.value = prod.image_thumb || "";
     galleryInput.value = (prod.gallery || []).join("\n");
-    descHtmlInput.value = prod.description_html || "";
-    updatePreview();
+    descHtmlInput.value = prod.desc_html || prod.description_html || "";
+    descPreview.innerHTML = prod.desc_html || prod.description_html || "";
 
-    const pricing = prod.pricing || {};
-    basePriceInput.value =
-      pricing.base_price != null ? pricing.base_price : "";
-    unitInput.value = pricing.unit || "";
+    basePriceInput.value = prod.base_price != null ? prod.base_price : "";
+    unitInput.value = prod.unit || "";
+    markupRiv10Input.value = prod.markup_riv10 != null ? prod.markup_riv10 : "";
+    markupRivInput.value = prod.markup_riv != null ? prod.markup_riv : "";
+    markupDistInput.value = prod.markup_dist != null ? prod.markup_dist : "";
 
-    markupRiv10Input.value =
-      pricing.markup_riv10 != null ? pricing.markup_riv10 : 10;
-    markupRivInput.value =
-      pricing.markup_riv != null ? pricing.markup_riv : 20;
-    markupDistInput.value =
-      pricing.markup_dist != null ? pricing.markup_dist : 0;
+    priceRiv10Output.value = prod.price_rivenditore10 != null ? prod.price_rivenditore10 : prod.price_riv10 || "";
+    priceRivOutput.value = prod.price_rivenditore != null ? prod.price_rivenditore : prod.price_riv || "";
+    priceDistOutput.value = prod.price_distributore != null ? prod.price_distributore : prod.price_dist || "";
+
+    priceDistFinalInput.value = prod.price_distributore != null ? prod.price_distributore : prod.price_dist || "";
+    priceRivFinalInput.value = prod.price_rivenditore != null ? prod.price_rivenditore : prod.price_riv || "";
+    priceRiv10FinalInput.value = prod.price_rivenditore10 != null ? prod.price_rivenditore10 : prod.price_riv10 || "";
+    stockQtyInput.value = prod.qty_stock != null ? prod.qty_stock : "";
+    discountDistInput.value = prod.discount_dist_percent != null ? prod.discount_dist_percent : "";
+    discountRivInput.value = prod.discount_riv_percent != null ? prod.discount_riv_percent : "";
+    discountRiv10Input.value = prod.discount_riv10_percent != null ? prod.discount_riv10_percent : "";
+    statusInput.value = prod.status || "attivo";
 
     recalcPrices();
-    sheetProduct.style.display = "flex";
+    showSheet(sheetProduct);
   }
 
   function closeProductEditor() {
@@ -2760,60 +3373,50 @@
 
   async function saveProduct() {
     if (!editingProduct) return;
-    if (!currentUser || currentUser.name !== "GOD ADMIN") {
-      showToast("Solo GOD ADMIN può salvare le modifiche.", false);
-      return;
-    }
-
-    const basePrice = parseNumber(basePriceInput);
-    const mRiv10 = parseNumber(markupRiv10Input);
-    const mRiv = parseNumber(markupRivInput);
-    const mDist = parseNumber(markupDistInput);
-
-    const pRiv10 = basePrice * (1 + mRiv10 / 100);
-    const pRiv = basePrice * (1 + mRiv / 100);
-    const pDist = basePrice * (1 + mDist / 100);
-
-    editingProduct.name = nameInput.value.trim() || editingProduct.name;
-    editingProduct.image_hd = imageHdInput.value.trim();
-    editingProduct.image_thumb = imageThumbInput.value.trim();
-    editingProduct.gallery = (galleryInput.value || "")
-      .split("\n")
-      .map((v) => v.trim())
-      .filter(Boolean);
-    editingProduct.description_html = descHtmlInput.value;
-
-    editingProduct.pricing = {
-      base_price: basePrice,
-      unit: unitInput.value.trim(),
-      markup_riv10: mRiv10,
-      markup_riv: mRiv,
-      markup_dist: mDist,
-      prices: {
-        rivenditore10: pRiv10,
-        rivenditore: pRiv,
-        distributore: pDist,
-      },
-    };
 
     const payload = {
-      sku: editingProduct.sku,
-      name: editingProduct.name,
-      image_hd: editingProduct.image_hd,
-      image_thumb: editingProduct.image_thumb,
-      gallery: editingProduct.gallery,
-      description_html: editingProduct.description_html,
-      pricing: editingProduct.pricing,
+      sku: skuInput.value.trim(),
+      name: nameInput.value.trim(),
+      image_hd: imageHdInput.value.trim(),
+      image_thumb: imageThumbInput.value.trim(),
+      gallery: galleryInput.value.split("\n").map(x => x.trim()).filter(Boolean),
+      desc_html: descHtmlInput.value,
+
+      base_price: basePriceInput.value ? Number(basePriceInput.value) : null,
+      unit: unitInput.value.trim(),
+      markup_riv10: markupRiv10Input.value ? Number(markupRiv10Input.value) : null,
+      markup_riv: markupRivInput.value ? Number(markupRivInput.value) : null,
+      markup_dist: markupDistInput.value ? Number(markupDistInput.value) : null,
+
+      price_distributore: priceDistFinalInput.value ? Number(priceDistFinalInput.value) : null,
+      price_rivenditore: priceRivFinalInput.value ? Number(priceRivFinalInput.value) : null,
+      price_rivenditore10: priceRiv10FinalInput.value ? Number(priceRiv10FinalInput.value) : null,
+
+      qty_stock: stockQtyInput.value ? Number(stockQtyInput.value) : 0,
+      discount_dist_percent: discountDistInput.value ? Number(discountDistInput.value) : 0,
+      discount_riv_percent: discountRivInput.value ? Number(discountRivInput.value) : 0,
+      discount_riv10_percent: discountRiv10Input.value ? Number(discountRiv10Input.value) : 0,
+      status: statusInput.value || "attivo"
     };
 
     try {
-      await fetch(BASE_URL + "/ecom/product/update", {
+      const res = await fetch(BASE_URL + "/admin/products/save", {
         method: "POST",
         headers: buildAuthHeaders(),
         body: JSON.stringify(payload),
       });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const saved = await res.json();
+      const idx = priceList.findIndex((p) => String(p.sku) === String(payload.sku));
+      if (idx >= 0) {
+        priceList[idx] = saved;
+      } else {
+        priceList.push(saved);
+      }
+      renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
       showToast("Scheda prodotto aggiornata.");
     } catch (e) {
+      console.error("Errore salvataggio prodotto", e);
       showToast("Scheda aggiornata in locale. Backend non raggiungibile.", false);
     }
 
@@ -3944,11 +4547,13 @@
       await validateSession();
       const authHeaders = buildAuthHeaders();
       const promoCfgPromise = fetch(BASE_URL + "/admin/promo/config", { headers: authHeaders }).catch(() => null);
-      const [offersRes, clientsRes, productsRes, promoCfgRes] = await Promise.all([
+      const dailyOfferPromise = fetch(BASE_URL + "/admin/daily-offer", { headers: authHeaders }).catch(() => null);
+      const [offersRes, clientsRes, productsRes, promoCfgRes, dailyOfferRes] = await Promise.all([
         fetch(BASE_URL + "/admin/offers/all", { headers: authHeaders }),
         fetch(BASE_URL + "/admin/clients/all", { headers: authHeaders }),
         fetch(BASE_URL + "/admin/products/all", { headers: authHeaders }),
-        promoCfgPromise
+        promoCfgPromise,
+        dailyOfferPromise
       ]);
 
       const offersJson = await offersRes.json();
@@ -3957,6 +4562,12 @@
       if (promoCfgRes && promoCfgRes.ok) {
         const promoCfgJson = await promoCfgRes.json();
         setPromoConfig(promoCfgJson || {});
+      }
+      if (dailyOfferRes && dailyOfferRes.ok) {
+        const dailyJson = await dailyOfferRes.json();
+        dailyOffer = dailyJson || null;
+      } else {
+        dailyOffer = null;
       }
 
       discountConfigs = (offersJson.configs || []).map((cfg) => {
@@ -3975,6 +4586,9 @@
       renderDiscountPreview();
       renderClientsTable();
       refreshPromoClientsSelect();
+      refreshDailyProductSelect();
+      fillDailyFormFromOffer();
+      renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
     } catch (e) {
       console.error("Errore bootstrapUniverse", e);
     } finally {
