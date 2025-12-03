@@ -3183,36 +3183,27 @@
   }
 
   function getUserPriceConfig() {
-    // 1. Prendiamo il listino prima dal client, poi dall'utente
+    // 1. Recupera il listino partendo dal client, poi dall'user
     let rawListino = "";
 
-    if (window.currentClient && (currentClient.listino || currentClient.user_tier)) {
+    if (currentClient && (currentClient.listino || currentClient.user_tier)) {
       rawListino = currentClient.listino || currentClient.user_tier;
-    } else if (window.currentUser && (currentUser.list_type || currentUser.tier)) {
-      rawListino = currentUser.list_type || currentUser.tier;
+    } else if (currentUser && (currentUser.tier || currentUser.list_type)) {
+      rawListino = currentUser.tier || currentUser.list_type;
     }
 
-    // Normalizziamo: maiuscolo e spazi singoli
-    const L = String(rawListino || "")
+    const norm = String(rawListino || "")
       .toUpperCase()
       .replace(/\s+/g, " ")
       .trim();
 
-    // Per debug: controlliamo cosa sta succedendo
-    console.debug("DailyOffer getUserPriceConfig", {
+    console.debug("getUserPriceConfig listino", {
       rawListino,
-      normalized: L,
-      currentClient,
-      currentUser,
+      norm,
     });
 
-    // Ordine di controllo:
-    // 1) RI+10% (rivenditore +10)
-    // 2) RI (rivenditore)
-    // 3) DI (distributore)
-
-    // RI+10% → rivenditore10
-    if (/\bRI\+10 ?%?\b/.test(L)) {
+    // LISTINO RI+10%  → rivenditore10
+    if (norm.includes("RI+10")) {
       return {
         segment: "rivenditore10",
         priceField: "price_rivenditore10",
@@ -3220,8 +3211,8 @@
       };
     }
 
-    // RI → rivenditore
-    if (/\bRI\b/.test(L) || L.includes("RIVENDITORE")) {
+    // LISTINO RI → rivenditore
+    if (norm.includes("LISTINO RI") || norm === "RI") {
       return {
         segment: "rivenditore",
         priceField: "price_rivenditore",
@@ -3229,8 +3220,8 @@
       };
     }
 
-    // DI → distributore
-    if (/\bDI\b/.test(L) || L.includes("DISTRIB") || L.includes("DIST")) {
+    // LISTINO DI → distributore
+    if (norm.includes("LISTINO DI") || norm === "DI") {
       return {
         segment: "distributore",
         priceField: "price_distributore",
@@ -3238,7 +3229,16 @@
       };
     }
 
-    // Fallback sicuro: trattiamo come rivenditore
+    // fallback: se contiene solo "RI" lo consideriamo rivenditore
+    if (norm.includes("RI")) {
+      return {
+        segment: "rivenditore",
+        priceField: "price_rivenditore",
+        discountField: "discount_riv_percent",
+      };
+    }
+
+    // fallback finale: rivenditore
     return {
       segment: "rivenditore",
       priceField: "price_rivenditore",
@@ -3280,49 +3280,50 @@
 
       const minQty = typeof data.min_qty === "number" ? data.min_qty : data.min_qty ? Number(data.min_qty) : 1;
       const cfg = getUserPriceConfig();
+      let basePrice = null;
+      let discountPercent = 0;
 
-      // Trova il prodotto daily a partire dallo SKU
-      // (mantieni la logica esistente, ma usa sempre cfg.priceField)
-
-      let prezzoStandard = 0;
-      if (product && product[cfg.priceField] != null) {
-        const parsed = Number(product[cfg.priceField]);
-        prezzoStandard = Number.isFinite(parsed) ? parsed : 0;
+      if (product) {
+        const rawBase = product[cfg.priceField];
+        if (typeof rawBase === "number") {
+          basePrice = rawBase;
+        } else if (rawBase != null && rawBase !== "") {
+          const parsed = Number(rawBase);
+          basePrice = Number.isFinite(parsed) ? parsed : null;
+        }
       }
 
-      // Percentuale di sconto daily per il listino del cliente
-      let scontoPercent = 0;
-      if (data && data[cfg.discountField] != null) {
-        const parsedDisc = Number(data[cfg.discountField]);
-        scontoPercent = Number.isFinite(parsedDisc) ? parsedDisc : 0;
+      const rawDiscount = data[cfg.discountField];
+      if (typeof rawDiscount === "number") {
+        discountPercent = rawDiscount;
+      } else if (rawDiscount != null && rawDiscount !== "") {
+        const parsedDisc = Number(rawDiscount);
+        discountPercent = Number.isFinite(parsedDisc) ? parsedDisc : 0;
       }
 
-      // Prezzo finale calcolato sul PREZZO STANDARD del listino del cliente
-      const prezzoFinale = prezzoStandard * (1 - scontoPercent / 100);
+      let finalPrice = null;
+      if (basePrice != null && discountPercent > 0) {
+        finalPrice = basePrice * (1 - discountPercent / 100);
+      }
 
-      // Log di debug per verificare i valori reali
-      console.debug("DailyOffer prezzi calcolati", {
+      console.debug("DailyOffer prezzo", {
         cfg,
-        prezzoStandard,
-        scontoPercent,
-        prezzoFinale,
-        productPrices: {
-          price_distributore: product ? product.price_distributore : null,
-          price_rivenditore: product ? product.price_rivenditore : null,
-          price_rivenditore10: product ? product.price_rivenditore10 : null,
-        },
-        dailyRaw: data,
+        basePrice,
+        discountPercent,
+        finalPrice,
+        product,
+        data,
       });
 
       // Aggiorna l'interfaccia
       if (dailyPriceOriginalEl) {
-        dailyPriceOriginalEl.textContent = formatEuro(prezzoStandard);
+        dailyPriceOriginalEl.textContent = formatEuro(basePrice);
       }
       if (dailyPriceDiscountedEl) {
-        dailyPriceDiscountedEl.textContent = formatEuro(prezzoFinale);
+        dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
       }
       if (dailyPricePercentEl) {
-        dailyPricePercentEl.textContent = "-" + scontoPercent + "%";
+        dailyPricePercentEl.textContent = "-" + discountPercent + "%";
       }
 
       if (dailyCouponCodeEl) {
@@ -3361,11 +3362,11 @@
       }
 
       if (dailyPriceBox && dailyPriceOriginalEl && dailyPriceDiscountedEl && dailyPricePercentEl) {
-        if (prezzoStandard != null && prezzoFinale != null) {
+        if (basePrice != null && finalPrice != null) {
           dailyPriceBox.style.display = "block";
-          dailyPriceOriginalEl.textContent = formatEuro(prezzoStandard);
-          dailyPriceDiscountedEl.textContent = formatEuro(prezzoFinale);
-          dailyPricePercentEl.textContent = "-" + scontoPercent + "%";
+          dailyPriceOriginalEl.textContent = formatEuro(basePrice);
+          dailyPriceDiscountedEl.textContent = formatEuro(finalPrice);
+          dailyPricePercentEl.textContent = "-" + discountPercent + "%";
         } else {
           dailyPriceBox.style.display = "none";
           dailyPriceOriginalEl.textContent = "";
