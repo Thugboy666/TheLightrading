@@ -1321,6 +1321,12 @@
         <h3 style="margin:4px 0;">Offerta Daily</h3>
 
         <div class="field">
+          <label>Ricerca prodotto</label>
+          <input id="daily-product-search" type="text" placeholder="Cerca per SKU, codice o nome prodotto..." />
+          <small>La ricerca viene effettuata sugli articoli caricati da listino.</small>
+        </div>
+
+        <div class="field">
           <label>Prodotto in offerta daily</label>
           <select id="daily-product-select"></select>
           <small>Seleziona uno dei prodotti caricati da listino.</small>
@@ -1746,6 +1752,7 @@
   const promoSummaryBox = document.getElementById("promo-summary");
   const promoRulesStatic = document.getElementById("promo-rules-static");
 
+  const dailyProductSearchInput = document.getElementById("daily-product-search");
   const dailyProductSelect = document.getElementById("daily-product-select");
   const dailyStartInput = document.getElementById("daily-start");
   const dailyEndInput = document.getElementById("daily-end");
@@ -1865,6 +1872,11 @@
   if (priceListSearchInput) {
     priceListSearchInput.addEventListener("input", (e) => {
       renderPriceListTable(e.target.value);
+    });
+  }
+  if (dailyProductSearchInput) {
+    dailyProductSearchInput.addEventListener("input", (e) => {
+      refreshDailyProductSelect(e.target.value);
     });
   }
   if (priceListTableWrapper) {
@@ -2242,19 +2254,31 @@
     }
   }
 
-  function refreshDailyProductSelect() {
+  function refreshDailyProductSelect(filterText = "") {
     if (!dailyProductSelect) return;
+    const term = (filterText || "").toLowerCase().trim();
+
     dailyProductSelect.innerHTML = "";
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = "Seleziona prodotto…";
+    placeholder.textContent = "Seleziona prodotto...";
     dailyProductSelect.appendChild(placeholder);
 
     (priceList || []).forEach((p) => {
+      const sku = (p.sku || "").toLowerCase();
+      const codice = (p.codice || "").toLowerCase();
+      const name = (p.name || "").toLowerCase();
+      const desc = (p.desc_html || p.description || "").toLowerCase();
+
+      if (term) {
+        const match = sku.includes(term) || codice.includes(term) || name.includes(term) || desc.includes(term);
+        if (!match) return;
+      }
+
       const opt = document.createElement("option");
+      const codeLabel = p.codice ? ` [${p.codice}]` : "";
       opt.value = p.sku;
-      const codice = p.codice ? ` [${p.codice}]` : "";
-      opt.textContent = `${p.sku}${codice} – ${p.name || ""}`;
+      opt.textContent = `${p.sku}${codeLabel} – ${p.name || ""}`;
       dailyProductSelect.appendChild(opt);
     });
 
@@ -2320,7 +2344,7 @@
       return;
     }
 
-    refreshDailyProductSelect();
+    refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
     if (dailyOffer.sku && dailyProductSelect) dailyProductSelect.value = dailyOffer.sku;
     if (dailyStartInput) dailyStartInput.value = toInputDateTimeLocal(dailyOffer.start_at);
     if (dailyEndInput) dailyEndInput.value = toInputDateTimeLocal(dailyOffer.end_at);
@@ -2692,7 +2716,7 @@
       const sku = (p.sku || "").toLowerCase();
       const codice = (p.codice || "").toLowerCase();
       const name = (p.name || "").toLowerCase();
-      const desc = (p.desc || p.description || p.description_html || "").toLowerCase();
+      const desc = (p.desc_html || p.description || "").toLowerCase();
       if (!term) return true;
       return sku.includes(term) || codice.includes(term) || name.includes(term) || desc.includes(term);
     });
@@ -2766,20 +2790,26 @@
     fd.append("file", file);
     try {
       const data = await importPriceList(fd);
-      if (data && Array.isArray(data.products)) {
-        priceList = data.products;
+      if (data) {
+        if (Array.isArray(data.products)) priceList = data.products;
+        else if (Array.isArray(data.items)) priceList = data.items;
+        else if (Array.isArray(data)) priceList = data;
       }
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+      refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
       showToast("Listino importato correttamente.");
     } catch (e) {
       try {
         const refreshed = await fetch(BASE_URL + "/admin/products/all", { headers: buildAuthHeaders() });
         const resJson = await refreshed.json();
-        priceList = resJson.products || [];
+        if (Array.isArray(resJson.products)) priceList = resJson.products;
+        else if (Array.isArray(resJson.items)) priceList = resJson.items;
+        else if (Array.isArray(resJson)) priceList = resJson;
       } catch (err) {
         console.error("Errore refresh listino", err);
       }
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+      refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
       showToast("Listino caricato localmente");
     }
   }
@@ -4603,12 +4633,15 @@
         return normalized;
       });
       clients = clientsJson.clients || [];
-      priceList = productsJson.products || [];
+      if (Array.isArray(productsJson.products)) priceList = productsJson.products;
+      else if (Array.isArray(productsJson.items)) priceList = productsJson.items;
+      else if (Array.isArray(productsJson)) priceList = productsJson;
+      else priceList = [];
 
       renderDiscountPreview();
       renderClientsTable();
       refreshPromoClientsSelect();
-      refreshDailyProductSelect();
+      refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
       fillDailyFormFromOffer();
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
     } catch (e) {

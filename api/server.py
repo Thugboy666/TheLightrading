@@ -154,6 +154,24 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     return False
 
 
+def safe_int(value, default=0):
+    if value is None:
+        return default
+    s = str(value).strip()
+    if not s:
+        return default
+
+    s_upper = s.upper()
+    if s_upper in {"N", "NA", "N/A", "ND", "NON DISPONIBILE", "-"}:
+        return default
+
+    s_clean = s.replace(" ", "").replace(".", "").replace(",", "")
+    try:
+        return int(s_clean)
+    except ValueError:
+        return default
+
+
 def discount_rules_to_configs() -> list[dict]:
     configs: dict[str, dict] = {}
     for row in list_discount_rules():
@@ -839,7 +857,41 @@ async def admin_offers_save(request: web.Request) -> web.Response:
 
 
 async def admin_products_all(request: web.Request) -> web.Response:
-    return web.json_response({"products": list_products()})
+    raw_products = list_products()
+    products = []
+    for r in raw_products:
+        gallery = r.get("gallery") if isinstance(r, dict) else r.get("gallery", [])
+        if isinstance(gallery, str):
+            try:
+                gallery = json.loads(gallery)
+            except Exception:
+                gallery = []
+
+        product = {
+            "sku": r.get("sku"),
+            "name": r.get("name"),
+            "desc_html": r.get("desc_html") or r.get("description_html"),
+            "image_hd": r.get("image_hd"),
+            "image_thumb": r.get("image_thumb"),
+            "gallery": gallery or [],
+            "base_price": r.get("base_price"),
+            "unit": r.get("unit"),
+            "markup_riv10": r.get("markup_riv10"),
+            "markup_riv": r.get("markup_riv"),
+            "markup_dist": r.get("markup_dist"),
+            "price_distributore": r.get("price_distributore") or r.get("price_dist"),
+            "price_rivenditore": r.get("price_rivenditore") or r.get("price_riv"),
+            "price_rivenditore10": r.get("price_rivenditore10") or r.get("price_riv10"),
+            "qty_stock": r.get("qty_stock"),
+            "discount_dist_percent": r.get("discount_dist_percent"),
+            "discount_riv_percent": r.get("discount_riv_percent"),
+            "discount_riv10_percent": r.get("discount_riv10_percent"),
+            "status": r.get("status"),
+            "codice": r.get("codice"),
+        }
+        products.append(product)
+
+    return web.json_response({"products": products})
 
 
 async def admin_price_list_import(request: web.Request) -> web.Response:
@@ -907,7 +959,7 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
             "price_distributore": float(price_distributore or 0) if price_distributore is not None else None,
             "price_rivenditore": float(price_rivenditore or 0) if price_rivenditore is not None else None,
             "price_rivenditore10": float(price_rivenditore10 or 0) if price_rivenditore10 is not None else None,
-            "qty_stock": int(qty_stock or 0),
+            "qty_stock": safe_int(qty_stock, 0),
             "status": str(status),
             "gallery": [],
             "extra": {},
