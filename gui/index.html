@@ -1657,6 +1657,8 @@
     is_admin: false,
   };
 
+  let currentClient = null;
+
   let zoomLevel = "GALASSIA";
   let currentPath = [];
   let currentSystem = null;
@@ -2240,14 +2242,17 @@
       if (!res.ok) {
         clearSessionStorage();
         currentUser = { logged: false, tier: "ospite", name: null, token: null, email: null };
+        currentClient = null;
         updateUserUI();
         return;
       }
       const me = await res.json();
-      currentUser.name = me.name || currentUser.name;
-      currentUser.tier = me.tier || currentUser.tier;
-      currentUser.email = me.email || currentUser.email;
-      currentUser.is_admin = !!me.is_admin || !!(me.user && me.user.is_admin);
+      const meUser = me.user || me;
+      currentUser.name = meUser.name || currentUser.name;
+      currentUser.tier = meUser.tier || currentUser.tier;
+      currentUser.email = meUser.email || currentUser.email;
+      currentUser.is_admin = !!meUser.is_admin || !!(me.user && me.user.is_admin);
+      currentClient = me.client || null;
       updateUserUI();
     } catch (e) {
       console.warn("Impossibile validare la sessione, mantengo lo stato locale", e);
@@ -2256,6 +2261,7 @@
 
   function logout() {
     currentUser = { logged: false, tier: "ospite", name: null, token: null, email: null, is_admin: false };
+    currentClient = null;
     clearSessionStorage();
     updateUserUI();
     showToast("Sei uscito dall'account.");
@@ -3104,63 +3110,34 @@
   }
 
   function getUserPriceConfig() {
-    const rawTier =
-      (currentUser && (currentUser.tier || currentUser.list_type || "")) || "";
-    const tier = rawTier.toLowerCase().trim();
+    let rawTier = "";
+    if (currentClient && (currentClient.listino || currentClient.user_tier)) {
+      rawTier = currentClient.listino || currentClient.user_tier;
+    } else if (currentUser && (currentUser.list_type || currentUser.tier)) {
+      rawTier = currentUser.list_type || currentUser.tier;
+    }
+    const tier = String(rawTier || "").toLowerCase().trim();
 
-    // default: normal reseller
-    const defaultCfg = {
-      priceField: "price_rivenditore",
-      discountField: "discount_riv_percent",
-    };
-
-    if (!tier) {
-      return defaultCfg;
+    let cfg;
+    if (tier.includes("dist")) {
+      cfg = { priceField: "price_distributore", discountField: "discount_dist_percent" };
+    } else if (tier.includes("10") || tier.includes("riv10") || tier.includes("+10")) {
+      cfg = { priceField: "price_rivenditore10", discountField: "discount_riv10_percent" };
+    } else if (tier.includes("riv")) {
+      cfg = { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
+    } else {
+      cfg = { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
     }
 
-    // heuristics for segments
-    const isRiv10 =
-      tier.includes("10") ||
-      tier.includes("+10") ||
-      tier.includes("riv 10") ||
-      tier.includes("riv+10");
+    console.debug("Daily offer – price config", {
+      rawTier,
+      tier,
+      client: currentClient,
+      user: currentUser,
+      cfg,
+    });
 
-    const isDistributore =
-      tier.includes("dist") ||
-      tier.includes("distrib") ||
-      tier.includes("distributore") ||
-      tier.includes("b2b");
-
-    const isRiv =
-      tier.includes("riv") || tier.includes("rivenditore");
-
-    // Priority:
-    // 1) specific "+10" tier
-    // 2) explicit distributor / B2B
-    // 3) normal reseller
-    if (isRiv10) {
-      return {
-        priceField: "price_rivenditore10",
-        discountField: "discount_riv10_percent",
-      };
-    }
-
-    if (isDistributore) {
-      return {
-        priceField: "price_distributore",
-        discountField: "discount_dist_percent",
-      };
-    }
-
-    if (isRiv) {
-      return {
-        priceField: "price_rivenditore",
-        discountField: "discount_riv_percent",
-      };
-    }
-
-    // fallback
-    return defaultCfg;
+    return cfg;
   }
 
   async function openDailyOfferForUser() {
