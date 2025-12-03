@@ -427,6 +427,7 @@ async def auth_me(request: web.Request) -> web.Response:
     client = link_client_to_user_by_email(user.get("email")) or get_client_by_email(
         user.get("email")
     )
+    client_payload = client_payload_from_record(client)
 
     return web.json_response(
         {
@@ -439,7 +440,7 @@ async def auth_me(request: web.Request) -> web.Response:
                 "phone": user.get("phone"),
                 "is_admin": bool(user.get("is_admin")),
             },
-            "client": client_payload_from_record(client),
+            "client": client_payload,
             # Chiavi legacy mantenute per compatibilità con il frontend esistente
             "email": user.get("email"),
             "name": user.get("name"),
