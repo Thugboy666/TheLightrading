@@ -5026,19 +5026,16 @@
 
     document.addEventListener("focusin", (event) => {
       const target = event.target;
-      if (window.CURRENT_VIEW === "admin") {
-        document.body.classList.remove("keyboard-open");
-        return;
-      }
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest("#sheet-admin")) return;
-      if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") return;
+      if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && target.tagName !== "SELECT") return;
 
+      // Se il campo è dentro uno sheet (login, register, ADMIN, ecc.)
       const modal = target.closest(".sheet");
       const scrollContainer = modal || document.scrollingElement || document.body;
 
       setTimeout(() => {
         try {
+          // Centra il campo nella viewport (funziona anche per il pannello admin)
           target.scrollIntoView({
             behavior: "smooth",
             block: "center",
