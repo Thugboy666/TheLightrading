@@ -4998,6 +4998,42 @@
     return discountConfigs.find((c) => c.id === offerId);
   }
 
+  function isCategoryDiscountActive(cat) {
+    if (!cat) return false;
+    const catId = String(cat.id || cat.code || cat.slug || "").trim();
+    if (!catId) return false;
+
+    return discountConfigs.some((cfg) => {
+      const targetId = String(
+        cfg.entity_id ||
+        cfg.category_id ||
+        cfg.category ||
+        cfg.id ||
+        cfg.offer_id ||
+        cfg.offerId ||
+        ""
+      ).trim();
+      if (!targetId || targetId !== catId) return false;
+
+      const rulesPerSegment = cfg.rules || {};
+      return Object.values(rulesPerSegment).some((rulesList) =>
+        Array.isArray(rulesList) &&
+        rulesList.some((r) => Number(r.discount || 0) > 0)
+      );
+    });
+  }
+
+  function syncUniverseCategoryDiscountFlags() {
+    if (!universe || !Array.isArray(universe.systems)) return;
+
+    universe.systems.forEach((system) => {
+      if (!system || !Array.isArray(system.categories)) return;
+      system.categories.forEach((cat) => {
+        cat.discountActive = isCategoryDiscountActive(cat);
+      });
+    });
+  }
+
   function formatDateLabel(dateStr) {
     if (!dateStr) return "-";
     const d = new Date(dateStr);
@@ -5483,6 +5519,8 @@
         });
         return normalized;
       });
+      // Aggiorna i flag di sconto attivo sulle categorie dell'universo 3D
+      syncUniverseCategoryDiscountFlags();
       clients = clientsJson.clients || [];
       if (Array.isArray(productsJson.products)) {
         priceList = productsJson.products;
