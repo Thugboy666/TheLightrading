@@ -2082,12 +2082,20 @@
     btnAdmin.addEventListener("click", () => {
       window.CURRENT_VIEW = "admin";
       showSheet(sheetAdmin);
+      document.body.classList.add("admin-mode");
+
+      setTimeout(() => {
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        window.scrollTo(0, 0);
+      }, 50);
     });
   }
   if (btnAdminClose) {
     btnAdminClose.addEventListener("click", () => {
       window.CURRENT_VIEW = "user";
       hideSheet(sheetAdmin);
+      document.body.classList.remove("admin-mode");
     });
   }
   if (btnOrdersClose) {
@@ -5024,7 +5032,7 @@
   function setupInputAutoScroll() {
     if (!isMobileDevice()) return;
 
-    document.addEventListener("focusin", (event) => {
+    function handleKeyboardOpen(event) {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
       if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && target.tagName !== "SELECT") return;
@@ -5051,7 +5059,33 @@
           }
         }
       }, 150);
-    });
+    }
+
+    function handleKeyboardClose(event) {
+      return;
+    }
+
+    function isAdminPanelActive() {
+      return document.body.classList.contains("admin-mode");
+    }
+
+    document.addEventListener(
+      "focusin",
+      (event) => {
+        if (isAdminPanelActive()) return;
+        handleKeyboardOpen(event);
+      },
+      true
+    );
+
+    document.addEventListener(
+      "focusout",
+      (event) => {
+        if (isAdminPanelActive()) return;
+        handleKeyboardClose(event);
+      },
+      true
+    );
   }
 
   function getLatestValidUntil(rules = []) {
