@@ -2115,9 +2115,15 @@
   }
   document.getElementById("btn-up").addEventListener("click", goUpOneLevel);
 
-  adminTabClients.addEventListener("click", () => switchAdminTab("clients"));
-  adminTabOffers.addEventListener("click", () => switchAdminTab("offers"));
-  adminTabImport.addEventListener("click", () => switchAdminTab("import"));
+  if (adminTabClients) {
+    adminTabClients.addEventListener("click", () => switchAdminTab("clients"));
+  }
+  if (adminTabOffers) {
+    adminTabOffers.addEventListener("click", () => switchAdminTab("offers"));
+  }
+  if (adminTabImport) {
+    adminTabImport.addEventListener("click", () => switchAdminTab("import"));
+  }
   if (adminTabPromo) {
     adminTabPromo.addEventListener("click", () => switchAdminTab("promo"));
   }
@@ -3069,7 +3075,11 @@
     const collectUniverseOffers = () => {
       const list = [];
       offersUniverse.forEach((system) => {
-        list.push({ id: system.id, title: system.title || system.name, entity_label: system.name });
+        list.push({
+          id: system.id,
+          title: system.title || system.name,
+          entity_label: system.name,
+        });
         (system.categories || []).forEach((cat) => {
           const offerId = cat.offerId || cat.id;
           list.push({
@@ -3086,7 +3096,10 @@
     const rawOffers = [
       ...(Array.isArray(macroOffers) ? macroOffers : []),
       ...collectUniverseOffers(),
-      ...discountConfigs.map((cfg) => ({ id: cfg.id, title: cfg.title || cfg.name || cfg.id })),
+      ...discountConfigs.map((cfg) => ({
+        id: cfg.id,
+        title: cfg.title || cfg.name || cfg.id,
+      })),
     ];
 
     const seen = new Set();
@@ -5486,13 +5499,18 @@
       }
 
       discountConfigs = (offersJson.configs || []).map((cfg) => {
-        const normalized = { ...cfg, rules: {} };
+        const normalized = {
+          ...cfg,
+          rules: {},
+        };
+
         Object.entries(cfg.rules || {}).forEach(([seg, rules]) => {
           normalized.rules[seg] = (rules || []).map((r) => ({
             ...r,
-            max: r.max === null ? Infinity : r.max
+            max: r.max == null ? Infinity : r.max,
           }));
         });
+
         return normalized;
       });
       clients = clientsJson.clients || [];
