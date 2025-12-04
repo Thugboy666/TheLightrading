@@ -4,10 +4,35 @@ import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, NoReturn
+
+HEX_CHARS = set("0123456789abcdef")
+
+from core.logger import get_logger
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "db" / "thelight_universe.db"
+
+
+class DatabaseError(Exception):
+    """Errore applicativo sollevato in caso di problemi con SQLite."""
+
+
+db_logger = get_logger("thelight24.db")
+
+
+def _ensure_password_hash(password_hash: str) -> str:
+    """Valida che la password sia hashata (bcrypt o sha256)."""
+
+    if password_hash.startswith("$2"):
+        return password_hash
+
+    candidate = password_hash.lower()
+    if len(candidate) == 64 and all(ch in HEX_CHARS for ch in candidate):
+        return password_hash
+
+    db_logger.warning("Tentativo di salvare una password non hashata")
+    raise DatabaseError("password_hash non valido o non hashato")
 
 
 def ensure_db_dir() -> None:
@@ -21,258 +46,267 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
+def _handle_db_error(action: str, exc: sqlite3.Error) -> "NoReturn":
+    db_logger.error("Errore database durante %s: %s", action, exc, exc_info=True)
+    raise DatabaseError(f"Errore database durante {action}") from exc
+
+
 def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return {k: row[k] for k in row.keys()}
 
 
 def init_db() -> None:
     ensure_db_dir()
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                name TEXT,
-                tier TEXT DEFAULT 'rivenditore10',
-                piva TEXT,
-                phone TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                is_admin INTEGER DEFAULT 0
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ragione_sociale TEXT,
-                piva TEXT,
-                email TEXT,
-                telefono TEXT,
-                listino TEXT,
-                stato TEXT,
-                note TEXT,
-                promo_enabled INTEGER DEFAULT 0,
-                promo_points INTEGER DEFAULT 0,
-                promo_ticket_code TEXT,
-                promo_last_update TEXT,
-                user_id INTEGER,
-                created_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        # PROMO NATALE: migrazione colonne
-        existing_cols = {
-            row["name"] for row in cur.execute("PRAGMA table_info(clients)").fetchall()
-        }
-        migrations = [
-            ("promo_enabled", "ALTER TABLE clients ADD COLUMN promo_enabled INTEGER DEFAULT 0"),
-            ("promo_points", "ALTER TABLE clients ADD COLUMN promo_points INTEGER DEFAULT 0"),
-            ("promo_ticket_code", "ALTER TABLE clients ADD COLUMN promo_ticket_code TEXT"),
-            ("promo_last_update", "ALTER TABLE clients ADD COLUMN promo_last_update TEXT"),
-            ("user_id", "ALTER TABLE clients ADD COLUMN user_id INTEGER"),
-        ]
-        for col, stmt in migrations:
-            if col not in existing_cols:
-                cur.execute(stmt)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS discount_rules (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                offer_id TEXT NOT NULL,
-                segment TEXT NOT NULL,
-                min_amount REAL NOT NULL,
-                max_amount REAL,
-                discount_percent REAL NOT NULL,
-                valid_until TEXT
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS products (
-                sku TEXT PRIMARY KEY,
-                name TEXT,
-                codice TEXT,
-                image_hd TEXT,
-                image_thumb TEXT,
-                gallery_json TEXT,
-                description_html TEXT,
-                base_price REAL,
-                unit TEXT,
-                markup_riv10 REAL,
-                markup_riv REAL,
-                markup_dist REAL,
-                price_riv10 REAL,
-                price_riv REAL,
-                price_dist REAL,
-                extra_json TEXT,
-                price_distributore REAL,
-                price_rivenditore REAL,
-                price_rivenditore10 REAL,
-                qty_stock INTEGER DEFAULT 0,
-                discount_dist_percent REAL DEFAULT 0,
-                discount_riv_percent REAL DEFAULT 0,
-                discount_riv10_percent REAL DEFAULT 0,
-                status TEXT DEFAULT 'attivo'
-            )
-            """
-        )
-        # MIGRAZIONI LISTINO
-        product_cols = {
-            row["name"] for row in cur.execute("PRAGMA table_info(products)").fetchall()
-        }
-        migrations_products = [
-            ("codice", "ALTER TABLE products ADD COLUMN codice TEXT"),
-            ("price_distributore", "ALTER TABLE products ADD COLUMN price_distributore REAL"),
-            ("price_rivenditore", "ALTER TABLE products ADD COLUMN price_rivenditore REAL"),
-            ("price_rivenditore10", "ALTER TABLE products ADD COLUMN price_rivenditore10 REAL"),
-            ("qty_stock", "ALTER TABLE products ADD COLUMN qty_stock INTEGER DEFAULT 0"),
-            (
-                "discount_dist_percent",
-                "ALTER TABLE products ADD COLUMN discount_dist_percent REAL DEFAULT 0",
-            ),
-            (
-                "discount_riv_percent",
-                "ALTER TABLE products ADD COLUMN discount_riv_percent REAL DEFAULT 0",
-            ),
-            (
-                "discount_riv10_percent",
-                "ALTER TABLE products ADD COLUMN discount_riv10_percent REAL DEFAULT 0",
-            ),
-            ("status", "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'attivo'"),
-        ]
-        for col, stmt in migrations_products:
-            if col not in product_cols:
-                cur.execute(stmt)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS price_list_imports (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                imported_at TEXT,
-                file_name TEXT,
-                total_products INTEGER
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS meta (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-                token TEXT PRIMARY KEY,
-                user_id INTEGER,
-                created_at TEXT,
-                expires_at TEXT
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS promo_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER,
-                action_code TEXT,
-                points INTEGER,
-                created_at TEXT
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                document_number TEXT NOT NULL,
-                status TEXT,
-                cause TEXT,
-                customer_name TEXT,
-                customer_email TEXT,
-                order_date TEXT,
-                total_amount REAL,
-                external_id TEXT,
-                notes TEXT
-            )
-            """
-        )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(LOWER(customer_email))"
-        )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)"
-        )
-        # OFFERTA DAILY
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_offer (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                sku TEXT NOT NULL,
-                start_at TEXT,
-                end_at TEXT,
-                discount_dist_percent REAL DEFAULT 0,
-                discount_riv_percent REAL DEFAULT 0,
-                discount_riv10_percent REAL DEFAULT 0,
-                coupon_code TEXT,
-                active INTEGER DEFAULT 0,
-                min_qty INTEGER NOT NULL DEFAULT 1,
-                product_url TEXT
-            )
-            """
-        )
-        # Migrazione campo min_qty
-        daily_cols = {
-            row["name"] for row in cur.execute("PRAGMA table_info(daily_offer)").fetchall()
-        }
-        if "min_qty" not in daily_cols:
-            cur.execute(
-                "ALTER TABLE daily_offer ADD COLUMN min_qty INTEGER NOT NULL DEFAULT 1"
-            )
-        if "product_url" not in daily_cols:
-            cur.execute("ALTER TABLE daily_offer ADD COLUMN product_url TEXT")
-
-        # NOTIFICATION SETTINGS
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS notification_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scope TEXT NOT NULL UNIQUE,
-                notify_macro_offers INTEGER DEFAULT 1,
-                notify_daily_deal INTEGER DEFAULT 1,
-                notify_event_offer INTEGER DEFAULT 1,
-                notify_order_status INTEGER DEFAULT 1,
-                updated_at TEXT
-            )
-            """
-        )
-        existing_settings = cur.execute(
-            "SELECT * FROM notification_settings WHERE scope = ?", ("global",)
-        ).fetchone()
-        if not existing_settings:
-            now = datetime.now(timezone.utc).isoformat()
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
             cur.execute(
                 """
-                INSERT INTO notification_settings (
-                    scope,
-                    notify_macro_offers,
-                    notify_daily_deal,
-                    notify_event_offer,
-                    notify_order_status,
-                    updated_at
-                ) VALUES (?, 1, 1, 1, 1, ?)
-                """,
-                ("global", now),
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name TEXT,
+                    tier TEXT DEFAULT 'rivenditore10',
+                    piva TEXT,
+                    phone TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    is_admin INTEGER DEFAULT 0
+                )
+                """
             )
-        conn.commit()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS clients (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ragione_sociale TEXT,
+                    piva TEXT,
+                    email TEXT,
+                    telefono TEXT,
+                    listino TEXT,
+                    stato TEXT,
+                    note TEXT,
+                    promo_enabled INTEGER DEFAULT 0,
+                    promo_points INTEGER DEFAULT 0,
+                    promo_ticket_code TEXT,
+                    promo_last_update TEXT,
+                    user_id INTEGER,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
+            # PROMO NATALE: migrazione colonne
+            existing_cols = {
+                row["name"] for row in cur.execute("PRAGMA table_info(clients)").fetchall()
+            }
+            migrations = [
+                ("promo_enabled", "ALTER TABLE clients ADD COLUMN promo_enabled INTEGER DEFAULT 0"),
+                ("promo_points", "ALTER TABLE clients ADD COLUMN promo_points INTEGER DEFAULT 0"),
+                ("promo_ticket_code", "ALTER TABLE clients ADD COLUMN promo_ticket_code TEXT"),
+                ("promo_last_update", "ALTER TABLE clients ADD COLUMN promo_last_update TEXT"),
+                ("user_id", "ALTER TABLE clients ADD COLUMN user_id INTEGER"),
+            ]
+            for col, stmt in migrations:
+                if col not in existing_cols:
+                    cur.execute(stmt)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS discount_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    offer_id TEXT NOT NULL,
+                    segment TEXT NOT NULL,
+                    min_amount REAL NOT NULL,
+                    max_amount REAL,
+                    discount_percent REAL NOT NULL,
+                    valid_until TEXT
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS products (
+                    sku TEXT PRIMARY KEY,
+                    name TEXT,
+                    codice TEXT,
+                    image_hd TEXT,
+                    image_thumb TEXT,
+                    gallery_json TEXT,
+                    description_html TEXT,
+                    base_price REAL,
+                    unit TEXT,
+                    markup_riv10 REAL,
+                    markup_riv REAL,
+                    markup_dist REAL,
+                    price_riv10 REAL,
+                    price_riv REAL,
+                    price_dist REAL,
+                    extra_json TEXT,
+                    price_distributore REAL,
+                    price_rivenditore REAL,
+                    price_rivenditore10 REAL,
+                    qty_stock INTEGER DEFAULT 0,
+                    discount_dist_percent REAL DEFAULT 0,
+                    discount_riv_percent REAL DEFAULT 0,
+                    discount_riv10_percent REAL DEFAULT 0,
+                    status TEXT DEFAULT 'attivo'
+                )
+                """
+            )
+            # MIGRAZIONI LISTINO
+            product_cols = {
+                row["name"] for row in cur.execute("PRAGMA table_info(products)").fetchall()
+            }
+            migrations_products = [
+                ("codice", "ALTER TABLE products ADD COLUMN codice TEXT"),
+                ("price_distributore", "ALTER TABLE products ADD COLUMN price_distributore REAL"),
+                ("price_rivenditore", "ALTER TABLE products ADD COLUMN price_rivenditore REAL"),
+                ("price_rivenditore10", "ALTER TABLE products ADD COLUMN price_rivenditore10 REAL"),
+                ("qty_stock", "ALTER TABLE products ADD COLUMN qty_stock INTEGER DEFAULT 0"),
+                (
+                    "discount_dist_percent",
+                    "ALTER TABLE products ADD COLUMN discount_dist_percent REAL DEFAULT 0",
+                ),
+                (
+                    "discount_riv_percent",
+                    "ALTER TABLE products ADD COLUMN discount_riv_percent REAL DEFAULT 0",
+                ),
+                (
+                    "discount_riv10_percent",
+                    "ALTER TABLE products ADD COLUMN discount_riv10_percent REAL DEFAULT 0",
+                ),
+                ("status", "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'attivo'"),
+            ]
+            for col, stmt in migrations_products:
+                if col not in product_cols:
+                    cur.execute(stmt)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS price_list_imports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    imported_at TEXT,
+                    file_name TEXT,
+                    total_products INTEGER
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    user_id INTEGER,
+                    created_at TEXT,
+                    expires_at TEXT
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS promo_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id INTEGER,
+                    action_code TEXT,
+                    points INTEGER,
+                    created_at TEXT
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_number TEXT NOT NULL,
+                    status TEXT,
+                    cause TEXT,
+                    customer_name TEXT,
+                    customer_email TEXT,
+                    order_date TEXT,
+                    total_amount REAL,
+                    external_id TEXT,
+                    notes TEXT
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(LOWER(customer_email))"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date)"
+            )
+            # OFFERTA DAILY
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_offer (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    sku TEXT NOT NULL,
+                    start_at TEXT,
+                    end_at TEXT,
+                    discount_dist_percent REAL DEFAULT 0,
+                    discount_riv_percent REAL DEFAULT 0,
+                    discount_riv10_percent REAL DEFAULT 0,
+                    coupon_code TEXT,
+                    active INTEGER DEFAULT 0,
+                    min_qty INTEGER NOT NULL DEFAULT 1,
+                    product_url TEXT
+                )
+                """
+            )
+            # Migrazione campo min_qty
+            daily_cols = {
+                row["name"] for row in cur.execute("PRAGMA table_info(daily_offer)").fetchall()
+            }
+            if "min_qty" not in daily_cols:
+                cur.execute(
+                    "ALTER TABLE daily_offer ADD COLUMN min_qty INTEGER NOT NULL DEFAULT 1"
+                )
+            if "product_url" not in daily_cols:
+                cur.execute("ALTER TABLE daily_offer ADD COLUMN product_url TEXT")
+
+            # NOTIFICATION SETTINGS
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scope TEXT NOT NULL UNIQUE,
+                    notify_macro_offers INTEGER DEFAULT 1,
+                    notify_daily_deal INTEGER DEFAULT 1,
+                    notify_event_offer INTEGER DEFAULT 1,
+                    notify_order_status INTEGER DEFAULT 1,
+                    updated_at TEXT
+                )
+                """
+            )
+            existing_settings = cur.execute(
+                "SELECT * FROM notification_settings WHERE scope = ?", ("global",)
+            ).fetchone()
+            if not existing_settings:
+                now = datetime.now(timezone.utc).isoformat()
+                cur.execute(
+                    """
+                    INSERT INTO notification_settings (
+                        scope,
+                        notify_macro_offers,
+                        notify_daily_deal,
+                        notify_event_offer,
+                        notify_order_status,
+                        updated_at
+                    ) VALUES (?, 1, 1, 1, 1, ?)
+                    """,
+                    ("global", now),
+                )
+            conn.commit()
+    except sqlite3.Error as exc:  # pragma: no cover - init failure must be logged
+        db_logger.error("Errore durante init_db: %s", exc, exc_info=True)
+        raise DatabaseError("init_db failed") from exc
 
 
 # ========== USERS / AUTH ========== #
@@ -296,16 +330,21 @@ def create_user(
     is_admin: int = 0,
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
-    with get_db() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO users (email, password_hash, name, tier, piva, phone, created_at, updated_at, is_admin)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (email, password_hash, name, tier, piva, phone, now, now, is_admin),
-        )
-        conn.commit()
-        user_id = cur.lastrowid
+    safe_hash = _ensure_password_hash(password_hash)
+
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO users (email, password_hash, name, tier, piva, phone, created_at, updated_at, is_admin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (email, safe_hash, name, tier, piva, phone, now, now, is_admin),
+            )
+            conn.commit()
+            user_id = cur.lastrowid
+    except sqlite3.Error as exc:
+        _handle_db_error("create_user", exc)
     return get_user_by_email(email) or {"id": user_id, "email": email, "name": name, "tier": tier}
 
 
@@ -313,12 +352,15 @@ def create_session(user_id: int, days_valid: int = 30) -> str:
     token = os.urandom(16).hex()
     now = datetime.now(timezone.utc)
     expires = now + timedelta(days=days_valid)
-    with get_db() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-            (token, user_id, now.isoformat(), expires.isoformat()),
-        )
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (token, user_id, now.isoformat(), expires.isoformat()),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("create_session", exc)
     return token
 
 
@@ -326,12 +368,15 @@ def create_session_with_expiry(user_id: int, expires_delta: timedelta) -> str:
     token = os.urandom(16).hex()
     now = datetime.now(timezone.utc)
     expires = now + expires_delta
-    with get_db() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-            (token, user_id, now.isoformat(), expires.isoformat()),
-        )
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (token, user_id, now.isoformat(), expires.isoformat()),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("create_session_with_expiry", exc)
     return token
 
 
@@ -360,12 +405,16 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
 
 def update_user_password(user_id: int, new_password_hash: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
-    with get_db() as conn:
-        conn.execute(
-            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
-            (new_password_hash, now, user_id),
-        )
-        conn.commit()
+    safe_hash = _ensure_password_hash(new_password_hash)
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (safe_hash, now, user_id),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("update_user_password", exc)
 
 
 # ========== CLIENTS ========== #
@@ -425,60 +474,63 @@ def save_client(data: Dict[str, Any]) -> Dict[str, Any]:
     promo_ticket_code = data.get("promo_ticket_code") or None
     promo_last_update = data.get("promo_last_update") or None
     user_id = data.get("user_id")
-    with get_db() as conn:
-        if data.get("id"):
-            existing = get_client_by_id(int(data["id"]))
-            promo_ticket_code = promo_ticket_code or (existing or {}).get("promo_ticket_code")
-            if existing and not promo_last_update:
-                promo_last_update = existing.get("promo_last_update")
-            conn.execute(
-                """
-                UPDATE clients
-                SET ragione_sociale = ?, piva = ?, email = ?, telefono = ?, listino = ?, stato = ?, note = ?, promo_enabled = ?, promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, user_id = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    data.get("ragione_sociale"),
-                    data.get("piva"),
-                    data.get("email"),
-                    data.get("telefono"),
-                    data.get("listino"),
-                    data.get("stato"),
-                    data.get("note"),
-                    promo_enabled,
-                    promo_points,
-                    promo_ticket_code,
-                    promo_last_update,
-                    user_id,
-                    now,
-                    data.get("id"),
-                ),
-            )
-        else:
-            cur = conn.execute(
-                """
-                INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, user_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    data.get("ragione_sociale"),
-                    data.get("piva"),
-                    data.get("email"),
-                    data.get("telefono"),
-                    data.get("listino"),
-                    data.get("stato"),
-                    data.get("note"),
-                    promo_enabled,
-                    promo_points,
-                    promo_ticket_code,
-                    promo_last_update,
-                    user_id,
-                    now,
-                    now,
-                ),
-            )
-            data["id"] = cur.lastrowid
-        conn.commit()
+    try:
+        with get_db() as conn:
+            if data.get("id"):
+                existing = get_client_by_id(int(data["id"]))
+                promo_ticket_code = promo_ticket_code or (existing or {}).get("promo_ticket_code")
+                if existing and not promo_last_update:
+                    promo_last_update = existing.get("promo_last_update")
+                conn.execute(
+                    """
+                    UPDATE clients
+                    SET ragione_sociale = ?, piva = ?, email = ?, telefono = ?, listino = ?, stato = ?, note = ?, promo_enabled = ?, promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, user_id = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        data.get("ragione_sociale"),
+                        data.get("piva"),
+                        data.get("email"),
+                        data.get("telefono"),
+                        data.get("listino"),
+                        data.get("stato"),
+                        data.get("note"),
+                        promo_enabled,
+                        promo_points,
+                        promo_ticket_code,
+                        promo_last_update,
+                        user_id,
+                        now,
+                        data.get("id"),
+                    ),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, user_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        data.get("ragione_sociale"),
+                        data.get("piva"),
+                        data.get("email"),
+                        data.get("telefono"),
+                        data.get("listino"),
+                        data.get("stato"),
+                        data.get("note"),
+                        promo_enabled,
+                        promo_points,
+                        promo_ticket_code,
+                        promo_last_update,
+                        user_id,
+                        now,
+                        now,
+                    ),
+                )
+                data["id"] = cur.lastrowid
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("save_client", exc)
     if not data.get("id"):
         with get_db() as conn:
             cur = conn.execute("SELECT last_insert_rowid() AS id")
@@ -503,50 +555,56 @@ def link_client_to_user_by_email(
     client = get_client_by_email(email)
     now = datetime.now(timezone.utc).isoformat()
 
-    with get_db() as conn:
-        if client:
-            if client.get("user_id") != user.get("id"):
-                conn.execute(
-                    "UPDATE clients SET user_id = ?, updated_at = ? WHERE id = ?",
-                    (user.get("id"), now, client.get("id")),
-                )
-                conn.commit()
-                client["user_id"] = user.get("id")
-            return client
+    try:
+        with get_db() as conn:
+            if client:
+                if client.get("user_id") != user.get("id"):
+                    conn.execute(
+                        "UPDATE clients SET user_id = ?, updated_at = ? WHERE id = ?",
+                        (user.get("id"), now, client.get("id")),
+                    )
+                    conn.commit()
+                    client["user_id"] = user.get("id")
+                return client
 
-        if not create_missing_client:
-            return None
+            if not create_missing_client:
+                return None
 
-        cur = conn.execute(
-            """
-            INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, user_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                None,
-                None,
-                email,
-                None,
-                user.get("tier") or default_listino,
-                "attivo",
-                "",
-                0,
-                0,
-                None,
-                None,
-                user.get("id"),
-                now,
-                now,
-            ),
-        )
-        conn.commit()
-        return get_client_by_id(cur.lastrowid)
+            cur = conn.execute(
+                """
+                INSERT INTO clients (ragione_sociale, piva, email, telefono, listino, stato, note, promo_enabled, promo_points, promo_ticket_code, promo_last_update, user_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    None,
+                    None,
+                    email,
+                    None,
+                    user.get("tier") or default_listino,
+                    "attivo",
+                    "",
+                    0,
+                    0,
+                    None,
+                    None,
+                    user.get("id"),
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            return get_client_by_id(cur.lastrowid)
+    except sqlite3.Error as exc:
+        _handle_db_error("link_client_to_user_by_email", exc)
 
 
 def delete_client(client_id: int) -> None:
-    with get_db() as conn:
-        conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("delete_client", exc)
 
 
 # PROMO NATALE: gestione punti
@@ -556,32 +614,35 @@ def _generate_ticket_code() -> str:
 
 def add_promo_points(client_id: int, action_code: str, points: int) -> Optional[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
-    with get_db() as conn:
-        client = get_client_by_id(client_id)
-        if not client:
-            return None
+    try:
+        with get_db() as conn:
+            client = get_client_by_id(client_id)
+            if not client:
+                return None
 
-        new_points = int(client.get("promo_points") or 0) + int(points)
-        ticket_code = client.get("promo_ticket_code")
-        if not ticket_code and int(client.get("promo_enabled") or 0) == 1:
-            ticket_code = _generate_ticket_code()
+            new_points = int(client.get("promo_points") or 0) + int(points)
+            ticket_code = client.get("promo_ticket_code")
+            if not ticket_code and int(client.get("promo_enabled") or 0) == 1:
+                ticket_code = _generate_ticket_code()
 
-        conn.execute(
-            """
-            UPDATE clients
-            SET promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (new_points, ticket_code, now, now, client_id),
-        )
-        conn.execute(
-            """
-            INSERT INTO promo_logs (client_id, action_code, points, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (client_id, action_code, points, now),
-        )
-        conn.commit()
+            conn.execute(
+                """
+                UPDATE clients
+                SET promo_points = ?, promo_ticket_code = ?, promo_last_update = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_points, ticket_code, now, now, client_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO promo_logs (client_id, action_code, points, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (client_id, action_code, points, now),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("add_promo_points", exc)
     return get_client_by_id(client_id)
 
 
@@ -918,44 +979,50 @@ def get_daily_offer() -> Optional[Dict[str, Any]]:
 
 
 def save_daily_offer(data: Dict[str, Any]) -> Dict[str, Any]:
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO daily_offer (id, sku, start_at, end_at, discount_dist_percent, discount_riv_percent, discount_riv10_percent, coupon_code, active, min_qty, product_url)
-            VALUES (1, :sku, :start_at, :end_at, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :coupon_code, :active, :min_qty, :product_url)
-            ON CONFLICT(id) DO UPDATE SET
-                sku=excluded.sku,
-                start_at=excluded.start_at,
-                end_at=excluded.end_at,
-                discount_dist_percent=excluded.discount_dist_percent,
-                discount_riv_percent=excluded.discount_riv_percent,
-                discount_riv10_percent=excluded.discount_riv10_percent,
-                coupon_code=excluded.coupon_code,
-                active=excluded.active,
-                min_qty=excluded.min_qty,
-                product_url=excluded.product_url
-            """,
-            {
-                "sku": data.get("sku"),
-                "start_at": data.get("start_at"),
-                "end_at": data.get("end_at"),
-                "discount_dist_percent": data.get("discount_dist_percent", 0),
-                "discount_riv_percent": data.get("discount_riv_percent", 0),
-                "discount_riv10_percent": data.get("discount_riv10_percent", 0),
-                "coupon_code": data.get("coupon_code"),
-                "active": 1 if data.get("active") else 0,
-                "min_qty": data.get("min_qty", 1),
-                "product_url": data.get("product_url"),
-            },
-        )
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_offer (id, sku, start_at, end_at, discount_dist_percent, discount_riv_percent, discount_riv10_percent, coupon_code, active, min_qty, product_url)
+                VALUES (1, :sku, :start_at, :end_at, :discount_dist_percent, :discount_riv_percent, :discount_riv10_percent, :coupon_code, :active, :min_qty, :product_url)
+                ON CONFLICT(id) DO UPDATE SET
+                    sku=excluded.sku,
+                    start_at=excluded.start_at,
+                    end_at=excluded.end_at,
+                    discount_dist_percent=excluded.discount_dist_percent,
+                    discount_riv_percent=excluded.discount_riv_percent,
+                    discount_riv10_percent=excluded.discount_riv10_percent,
+                    coupon_code=excluded.coupon_code,
+                    active=excluded.active,
+                    min_qty=excluded.min_qty,
+                    product_url=excluded.product_url
+                """,
+                {
+                    "sku": data.get("sku"),
+                    "start_at": data.get("start_at"),
+                    "end_at": data.get("end_at"),
+                    "discount_dist_percent": data.get("discount_dist_percent", 0),
+                    "discount_riv_percent": data.get("discount_riv_percent", 0),
+                    "discount_riv10_percent": data.get("discount_riv10_percent", 0),
+                    "coupon_code": data.get("coupon_code"),
+                    "active": 1 if data.get("active") else 0,
+                    "min_qty": data.get("min_qty", 1),
+                    "product_url": data.get("product_url"),
+                },
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("save_daily_offer", exc)
     return get_daily_offer() or {}
 
 
 def delete_daily_offer() -> None:
-    with get_db() as conn:
-        conn.execute("DELETE FROM daily_offer WHERE id = 1")
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM daily_offer WHERE id = 1")
+            conn.commit()
+    except sqlite3.Error as exc:
+        _handle_db_error("delete_daily_offer", exc)
 
 
 # ========== ORDERS ========== #
@@ -968,13 +1035,16 @@ def delete_orders_older_than(days: int = 31) -> int:
     """
 
     threshold = datetime.now(timezone.utc) - timedelta(days=days)
-    with get_db() as conn:
-        cur = conn.execute(
-            "DELETE FROM orders WHERE date(order_date) < date(?)",
-            (threshold.date().isoformat(),),
-        )
-        conn.commit()
-        return cur.rowcount
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "DELETE FROM orders WHERE date(order_date) < date(?)",
+                (threshold.date().isoformat(),),
+            )
+            conn.commit()
+            return cur.rowcount
+    except sqlite3.Error as exc:
+        _handle_db_error("delete_orders_older_than", exc)
 
 
 def bulk_insert_orders(orders: List[Dict[str, Any]]) -> int:
@@ -983,39 +1053,42 @@ def bulk_insert_orders(orders: List[Dict[str, Any]]) -> int:
     if not orders:
         return 0
 
-    with get_db() as conn:
-        cur = conn.executemany(
-            """
-            INSERT INTO orders (
-                document_number,
-                status,
-                cause,
-                customer_name,
-                customer_email,
-                order_date,
-                total_amount,
-                external_id,
-                notes
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    o.get("document_number"),
-                    o.get("status"),
-                    o.get("cause"),
-                    o.get("customer_name"),
-                    o.get("customer_email"),
-                    o.get("order_date"),
-                    o.get("total_amount"),
-                    o.get("external_id"),
-                    o.get("notes"),
+    try:
+        with get_db() as conn:
+            cur = conn.executemany(
+                """
+                INSERT INTO orders (
+                    document_number,
+                    status,
+                    cause,
+                    customer_name,
+                    customer_email,
+                    order_date,
+                    total_amount,
+                    external_id,
+                    notes
                 )
-                for o in orders
-            ],
-        )
-        conn.commit()
-        return cur.rowcount
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        o.get("document_number"),
+                        o.get("status"),
+                        o.get("cause"),
+                        o.get("customer_name"),
+                        o.get("customer_email"),
+                        o.get("order_date"),
+                        o.get("total_amount"),
+                        o.get("external_id"),
+                        o.get("notes"),
+                    )
+                    for o in orders
+                ],
+            )
+            conn.commit()
+            return cur.rowcount
+    except sqlite3.Error as exc:
+        _handle_db_error("bulk_insert_orders", exc)
 
 
 def list_orders(
