@@ -428,6 +428,12 @@
       border-radius: 999px;
       border: 1px solid transparent;
     }
+    /* Hide 3D floating badges when a category offer sheet is open */
+    body.category-detail-open .floating-badge {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease-out;
+    }
     .floating-badge.active {
       background: rgba(22,163,74,0.9);
       color: #ffffff;
@@ -4795,6 +4801,10 @@
     currentSubcategory = null;
     currentEntity = null;
     currentEntityType = null;
+    document.body.classList.remove("category-detail-open");
+    if (typeof mostraBadge3D === "function") {
+      mostraBadge3D();
+    }
     entityCard.style.display = "none";
     entityAdminActions.style.display = "none";
     scene.rotation.set(0, 0, 0);
@@ -5213,6 +5223,10 @@
     currentEntityType = "category";
     entityCard.style.display = "flex";
     if (entityImageWrapper) entityImageWrapper.style.display = "none";
+    document.body.classList.add("category-detail-open");
+    if (typeof nascondiBadge3D === "function") {
+      nascondiBadge3D();
+    }
     entityTypeEl.textContent = "CATEGORIA";
     entityTitleEl.textContent = cat.name;
     const subs = cat.subcategories?.length || 0;
@@ -5284,10 +5298,18 @@
       buildSystemView(currentSystem);
       showSystemCard(currentSystem);
       updateLabels();
+      document.body.classList.remove("category-detail-open");
+      if (typeof mostraBadge3D === "function") {
+        mostraBadge3D();
+      }
       return;
     }
     if (zoomLevel === "SYSTEM") {
       resetToGalaxy();
+      document.body.classList.remove("category-detail-open");
+      if (typeof mostraBadge3D === "function") {
+        mostraBadge3D();
+      }
       return;
     }
   }
