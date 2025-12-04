@@ -1,21 +1,22 @@
 import io
-import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import bcrypt
 import hashlib
 import json
-import httpx
 from aiohttp import web
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
+from core.logger import get_logger
+from llm.model_client import complete_text
+
 from .db import (
+    DatabaseError,
     clear_discount_rules_for_offer_segment,
     create_session_with_expiry,
     create_user,
@@ -53,35 +54,14 @@ from .db import (
 # ================== CONFIG BASE ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-LOG_DIR = BASE_DIR / "logs"
-LOG_DIR.mkdir(exist_ok=True)
-
-LOG_FILE = LOG_DIR / "api.log"
-
-logger = logging.getLogger("thelight24.api")
-logger.setLevel(logging.INFO)
-
-# Evita handler duplicati se il modulo viene ricaricato
-if not logger.handlers:
-    handler = RotatingFileHandler(
-        LOG_FILE,
-        maxBytes=2 * 1024 * 1024,  # 2 MB
-        backupCount=3,
-        encoding="utf-8",
-    )
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    # Log anche su stdout (utile in fase debug)
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-
+logger = get_logger("thelight24.api")
 logger.info("TheLight24 API avviata (server.py caricato)")
+
+ALLOW_PLAINTEXT_PASSWORDS = os.getenv("ALLOW_PLAINTEXT_PASSWORDS", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 def log_event(event: str, **extra: Any) -> None:
@@ -142,21 +122,29 @@ def hash_password_legacy(password: str) -> str:
 def verify_password(plain_password: str, stored_hash: str) -> bool:
     if not stored_hash:
         return False
+
     # Bcrypt hash
     try:
         if stored_hash.startswith("$2") and bcrypt.checkpw(
             plain_password.encode("utf-8"), stored_hash.encode("utf-8")
         ):
             return True
-    except Exception:
-        # fallback to legacy checks
-        pass
+    except Exception as exc:  # pragma: no cover - log e fallback
+        logger.warning("Verifica bcrypt fallita: %s", exc)
+
     # Legacy sha256 hash
-    if stored_hash == hash_password_legacy(plain_password):
+    if len(stored_hash) == 64 and stored_hash == hash_password_legacy(plain_password):
         return True
-    # Plain text fallback (vecchi import non hashati)
+
+    # Plain text fallback (solo se esplicitamente consentito)
     if stored_hash == plain_password:
-        return True
+        if ALLOW_PLAINTEXT_PASSWORDS:
+            logger.warning("Verifica password plaintext accettata per retrocompatibilità")
+            return True
+        logger.warning("Password plaintext rifiutata: hash mancante")
+        return False
+
+    logger.warning("Formato hash password non riconosciuto, login rifiutato")
     return False
 
 
@@ -171,6 +159,37 @@ def get_user_from_request(request: web.Request) -> tuple[Optional[dict], Optiona
         return None, None
     user = get_user_by_id(session.get("user_id"))
     return user, session
+
+
+def get_authenticated_user(request: web.Request) -> Optional[dict]:
+    """Restituisce l'utente autenticato o None se mancante/invalid."""
+
+    user, _ = get_user_from_request(request)
+    return user
+
+
+ADMIN_EMAIL_OVERRIDE = os.getenv("THELIGHT_ADMIN_EMAIL")
+
+
+def is_admin(user: Optional[dict]) -> bool:
+    """Verifica se l'utente è admin usando flag DB o email override."""
+
+    if not user:
+        return False
+    if bool(user.get("is_admin")):
+        return True
+    if ADMIN_EMAIL_OVERRIDE and user.get("email"):
+        return user.get("email").lower() == ADMIN_EMAIL_OVERRIDE.lower()
+    return False
+
+
+def get_admin_user_or_response(request: web.Request) -> tuple[Optional[dict], Optional[web.Response]]:
+    """Restituisce l'utente admin o una risposta 401 pronta."""
+
+    user = get_authenticated_user(request)
+    if not user or not is_admin(user):
+        return None, web.json_response({"error": "unauthorized"}, status=401)
+    return user, None
 
 
 NOTIFICATION_FLAG_MAP = {
@@ -401,6 +420,16 @@ async def health(request: web.Request) -> web.Response:
     return web.json_response(data)
 
 
+async def health_db(request: web.Request) -> web.Response:
+    try:
+        with get_db() as conn:
+            conn.execute("SELECT 1")
+    except Exception as exc:  # noqa: BLE001 - qualsiasi errore DB
+        logger.error("Health check DB fallito: %s", exc, exc_info=True)
+        return web.json_response({"status": "error"}, status=500)
+    return web.json_response({"status": "ok"})
+
+
 # ================== AUTH (STUB) ==================
 
 async def auth_register(request: web.Request) -> web.Response:
@@ -443,6 +472,10 @@ async def auth_login(request: web.Request) -> web.Response:
     password = body.get("password", "")
     remember = bool(body.get("remember", False))
 
+    if not email or not password:
+        logger.warning("Login fallito: credenziali mancanti per %s", email or "<vuoto>")
+        return web.json_response({"status": "ko", "error": "missing_credentials"})
+
     ADMIN_EMAIL = "god@local"
     ADMIN_PASS = "OrmaNet!2025$Light"
     if email == ADMIN_EMAIL and password == ADMIN_PASS:
@@ -459,10 +492,12 @@ async def auth_login(request: web.Request) -> web.Response:
 
     user = get_user_by_email(email)
     if not user:
+        logger.warning("Login fallito: utente non trovato per %s", email)
         log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
 
     if not verify_password(password, user.get("password_hash")):
+        logger.warning("Login fallito: password errata per %s", email)
         log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
 
@@ -475,6 +510,7 @@ async def auth_login(request: web.Request) -> web.Response:
         tier=user.get("tier", "rivenditore10"),
         token=token,
     )
+    logger.info("Login riuscito per %s", email)
     return web.json_response(
         {
             "status": "ok",
@@ -667,6 +703,10 @@ async def account_orders(request: web.Request) -> web.Response:
 
 
 async def admin_notification_settings_get(request: web.Request) -> web.Response:
+    _, unauthorized = get_admin_user_or_response(request)
+    if unauthorized:
+        return unauthorized
+
     settings = get_notification_settings()
     response = {
         "notify_macro_offers": bool(settings.get("notify_macro_offers", True)),
@@ -678,6 +718,10 @@ async def admin_notification_settings_get(request: web.Request) -> web.Response:
 
 
 async def admin_notification_settings_save(request: web.Request) -> web.Response:
+    _, unauthorized = get_admin_user_or_response(request)
+    if unauthorized:
+        return unauthorized
+
     try:
         body = await request.json()
     except Exception:
@@ -1133,7 +1177,18 @@ async def admin_price_list_import(request: web.Request) -> web.Response:
     if not file_data:
         return web.json_response({"error": "File listino vuoto."}, status=400)
 
-    wb = load_workbook(io.BytesIO(file_data), data_only=True)
+    try:
+        wb = load_workbook(io.BytesIO(file_data), data_only=True)
+    except (InvalidFileException, KeyError, ValueError) as exc:
+        logger.error("Errore parsing file listino %s: %s", file_part.filename, exc, exc_info=True)
+        return web.json_response(
+            {
+                "status": "error",
+                "error": "invalid_import_file",
+                "message": "File non valido o corrotto",
+            },
+            status=400,
+        )
     ws = wb.active
 
     header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
@@ -1429,59 +1484,23 @@ async def llm_chat(request: web.Request) -> web.Response:
     Normalizziamo SEMPRE in: {"content": "..."}
     """
     payload = await request.json()
+    prompt = payload.get("prompt") or payload.get("message") or ""
+    fallback_text = "[LLM non disponibile in questo momento. Riprova più tardi.]"
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(LLM_BACKEND_URL, json=payload)
-    except Exception as e:  # noqa: BLE001
-        return web.json_response(
-            {"error": f"impossibile contattare backend LLM: {e}"},
-            status=502,
+        content = await complete_text(
+            prompt,
+            max_tokens=int(payload.get("max_tokens", 256) or 256),
+            temperature=float(payload.get("temperature", 0.7) or 0.7),
+            timeout=float(payload.get("timeout", 120) or 120),
+            fallback_text=fallback_text,
         )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Errore durante la chiamata LLM: %s", exc, exc_info=True)
+        content = fallback_text
 
-    # Proviamo a fare parse JSON, altrimenti teniamo il testo puro
-    text_body = r.text
-    try:
-        raw = r.json()
-    except Exception:  # noqa: BLE001
-        raw = None
-
-    content = ""
-
-    if isinstance(raw, dict):
-        # 1) Caso classico llama.cpp: {"content": "...."}
-        if isinstance(raw.get("content"), str):
-            content = raw["content"]
-        # 2) content come lista di pezzi
-        elif isinstance(raw.get("content"), list):
-            parts = []
-            for p in raw["content"]:
-                if isinstance(p, str):
-                    parts.append(p)
-                elif isinstance(p, dict) and isinstance(p.get("content"), str):
-                    parts.append(p["content"])
-            content = "".join(parts)
-        # 3) stile OpenAI-like con "choices"
-        elif isinstance(raw.get("choices"), list) and raw["choices"]:
-            ch = raw["choices"][0]
-            if isinstance(ch.get("text"), str):
-                content = ch["text"]
-            elif isinstance(ch.get("message"), dict) and isinstance(
-                ch["message"].get("content"), str
-            ):
-                content = ch["message"]["content"]
-        # Fallback: json intero
-        else:
-            content = text_body or str(raw)
-    else:
-        # Nessun JSON decente, usiamo il body testuale
-        content = text_body or "[risposta LLM vuota]"
-
-    content = (content or "").strip()
-    if not content:
-        content = "[LLM non ha restituito testo utile]"
-
-    return web.json_response({"content": content})
+    llm_ok = content != fallback_text
+    return web.json_response({"text": content, "content": content, "llm_ok": llm_ok})
 
 
 @web.middleware
@@ -1490,43 +1509,70 @@ async def request_logger_middleware(request: web.Request, handler):
     try:
         response = await handler(request)
     except web.HTTPException as exc:
-        duration = (datetime.now(timezone.utc) - start).total_seconds()
+        duration_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         logger.warning(
-            "HTTP %s %s -> %s (%.3fs) [EXC]",
+            "HTTP %s %s -> %s (%.1fms) [EXC]",
             request.method,
             request.path,
             exc.status,
-            duration,
+            duration_ms,
         )
         raise
-    except Exception as exc:  # noqa: BLE001
-        duration = (datetime.now(timezone.utc) - start).total_seconds()
+    except DatabaseError as exc:
+        duration_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         logger.exception(
-            "HTTP %s %s -> 500 (%.3fs) [UNHANDLED ERROR]",
+            "HTTP %s %s -> 500 (%.1fms) [DB_ERROR]",
             request.method,
             request.path,
-            duration,
+            duration_ms,
+        )
+        return web.json_response(
+            {
+                "status": "error",
+                "error": "db_error",
+                "message": "Errore interno di database",
+            },
+            status=500,
+        )
+    except Exception as exc:  # noqa: BLE001
+        duration_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+        logger.exception(
+            "HTTP %s %s -> 500 (%.1fms) [UNHANDLED ERROR]",
+            request.method,
+            request.path,
+            duration_ms,
         )
         return web.json_response(
             {"error": "internal_error", "detail": str(exc)},
             status=500,
         )
 
-    duration = (datetime.now(timezone.utc) - start).total_seconds()
+    duration_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
     logger.info(
-        "HTTP %s %s -> %s (%.3fs)",
+        "HTTP %s %s -> %s (%.1fms)",
         request.method,
         request.path,
         getattr(response, "status", "?"),
-        duration,
+        duration_ms,
     )
     return response
+
+
+@web.middleware
+async def admin_auth_middleware(request: web.Request, handler):
+    if request.path.startswith("/admin"):
+        user = get_authenticated_user(request)
+        if not user or not is_admin(user):
+            return web.json_response({"error": "unauthorized"}, status=401)
+    return await handler(request)
 
 
 # ================== APP FACTORY ==================
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[request_logger_middleware])
+    app = web.Application(
+        middlewares=[request_logger_middleware, admin_auth_middleware]
+    )
     app["db"] = db
     app["pending_notifications"] = []
 
@@ -1539,6 +1585,7 @@ def create_app() -> web.Application:
 
     # SYSTEM
     app.router.add_get("/system/health", health)
+    app.router.add_get("/health/db", health_db)
 
     # AUTH (stub locale)
     app.router.add_post("/auth/register", auth_register)

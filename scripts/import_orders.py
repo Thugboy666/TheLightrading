@@ -9,10 +9,12 @@ file con ``--input`` o variabile ``ORDERS_INPUT_FILE``.
 import argparse
 import csv
 import os
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+import re
 import sys
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple
 
 # Root del progetto TheLight24 (cartella che contiene "api", "scripts", "data", ecc.)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,6 +24,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from api.db import bulk_insert_orders, delete_orders_older_than, init_db
+from core.logger import get_logger
 
 try:
     from openpyxl import load_workbook
@@ -31,6 +34,9 @@ except Exception:  # pragma: no cover - import facoltativo in ambienti minimal
 DEFAULT_INPUT = Path(
     os.environ.get("ORDERS_INPUT_FILE", BASE_DIR / "data" / "orders_latest.csv")
 )
+
+logger = get_logger("thelight24.import_orders")
+EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 def parse_date(value: Optional[str]) -> Optional[str]:
@@ -70,8 +76,8 @@ def safe_number(value: Optional[str]) -> Optional[float]:
         return None
     text = str(value).strip().replace(".", "").replace(",", ".")
     try:
-        return float(text)
-    except ValueError:
+        return float(Decimal(text))
+    except (InvalidOperation, ValueError):
         return None
 
 
@@ -97,7 +103,7 @@ def load_xlsx_rows(path: Path) -> Iterable[Dict[str, str]]:
         yield {headers[i]: (row[i] if i < len(row) else None) for i in range(len(headers))}
 
 
-def normalize_row(raw: Dict[str, str]) -> Optional[Dict[str, str]]:
+def normalize_row(raw: Dict[str, str], row_index: int) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
     def pick(*keys: str) -> str:
         for key in keys:
             if key in raw and raw.get(key) not in (None, ""):
@@ -143,39 +149,54 @@ def normalize_row(raw: Dict[str, str]) -> Optional[Dict[str, str]]:
 
     notes = pick("note", "notes")
 
-    if not document_number or not customer_email:
-        return None
+    if not document_number:
+        return None, "missing_document_number"
 
-    return {
-        "document_number": document_number,
-        "status": status,
-        "cause": cause,
-        "customer_name": customer_name,
-        "customer_email": customer_email,
-        "order_date": order_date,
-        "total_amount": total_amount,
-        "external_id": external_id,
-        "notes": notes,
-    }
+    if not customer_email or not EMAIL_RE.match(customer_email):
+        return None, "invalid_email"
+
+    if raw.get("tot.doc.") or raw.get("total_amount"):
+        if total_amount is None:
+            return None, "invalid_total_amount"
+
+    return (
+        {
+            "document_number": document_number,
+            "status": status,
+            "cause": cause,
+            "customer_name": customer_name,
+            "customer_email": customer_email,
+            "order_date": order_date,
+            "total_amount": total_amount,
+            "external_id": external_id,
+            "notes": notes,
+        },
+        None,
+    )
 
 
-def load_orders(path: Path) -> List[Dict[str, str]]:
+def load_orders(path: Path) -> Tuple[List[Dict[str, str]], int, int]:
     records: List[Dict[str, str]] = []
+    discarded = 0
     loader = load_csv_rows
     if path.suffix.lower() in {".xlsx", ".xlsm"}:
         loader = load_xlsx_rows
 
-    for row in loader(path):
+    for idx, row in enumerate(loader(path), start=2):
         try:
-            normalized = normalize_row({(k or "").lower(): v for k, v in row.items()})
-            if not normalized:
-                print(f"Riga ignorata (campi obbligatori mancanti): {row}")
+            normalized, error = normalize_row({(k or "").lower(): v for k, v in row.items()}, idx)
+            if error or not normalized:
+                logger.warning(
+                    "Riga %s scartata (%s) doc=%s", idx, error or "invalid_row", row.get("document_number") or row.get("doc") or "?"
+                )
+                discarded += 1
                 continue
             records.append(normalized)
         except Exception as exc:  # noqa: BLE001
-            print(f"Errore parsing riga {row}: {exc}")
+            logger.warning("Errore parsing riga %s: %s", idx, exc, exc_info=True)
+            discarded += 1
             continue
-    return records
+    return records, idx if 'idx' in locals() else 0, discarded
 
 
 def main() -> None:
@@ -196,12 +217,17 @@ def main() -> None:
     print(f"Ordini rimossi perché più vecchi di {args.retention_days} giorni: {removed}")
 
     try:
-        orders = load_orders(input_path)
+        orders, total_rows, discarded = load_orders(input_path)
     except Exception as exc:  # noqa: BLE001
         print(f"[ERRORE] Impossibile leggere il file {input_path}: {exc}")
         return
 
     inserted = bulk_insert_orders(orders)
+    valid_rows = len(orders)
+    total_processed = total_rows if total_rows else valid_rows + discarded
+    summary = f"Import ordini completato: tot={total_processed}, validi={valid_rows}, scartati={discarded}"
+    print(summary)
+    logger.info(summary)
     print(f"Ordini importati: {inserted} su {len(orders)} righe valide")
     print("Esegui questo script via cron per aggiornare ogni mese lo storico ordini.")
 

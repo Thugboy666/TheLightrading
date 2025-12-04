@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 import csv
-import hashlib
 import sqlite3
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import bcrypt
+
+from core.logger import get_logger
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "db" / "thelight_universe.db"
 CSV_PATH = BASE_DIR / "data" / "users_plain.csv"
 
-def hash_password(pwd: str) -> str:
-    return hashlib.sha256(pwd.encode("utf-8")).hexdigest()
+logger = get_logger("thelight24.import_users")
+
+
+def hash_password(password: str) -> str:
+    """Applica hashing bcrypt coerente con l'API."""
+
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
 
 def main():
     if not CSV_PATH.exists():
@@ -20,7 +29,6 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    # Verifica che la tabella users esista
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
     if not cur.fetchone():
         print("Errore: tabella 'users' non trovata nel database.")
@@ -36,13 +44,15 @@ def main():
         conn.close()
         return
 
+    existing_emails = {row[0].lower() for row in cur.execute("SELECT LOWER(email) FROM users")}
+    seen_emails = set()
     inserted = 0
     skipped = 0
 
     now = datetime.utcnow().isoformat(timespec="seconds")
 
     for row in rows:
-        email = (row.get("email") or "").strip()
+        email = (row.get("email") or "").strip().lower()
         pwd_plain = (row.get("password_plain") or "").strip()
         name = (row.get("name") or "").strip() or None
         tier = (row.get("tier") or "").strip() or "rivenditore10"
@@ -50,7 +60,12 @@ def main():
         phone = (row.get("phone") or "").strip() or None
 
         if not email or not pwd_plain:
-            print(f"RIGA SKIPPATA (manca email o password): {row}")
+            logger.warning("Riga utente scartata (manca email o password): %s", row)
+            skipped += 1
+            continue
+
+        if email in existing_emails or email in seen_emails:
+            logger.warning("Email duplicata, skip: %s", email)
             skipped += 1
             continue
 
@@ -75,14 +90,16 @@ def main():
                 (email, pwd_hash, name, tier, piva, phone, now, now),
             )
             inserted += 1
+            seen_emails.add(email)
         except sqlite3.IntegrityError as e:
-            print(f"UTENTE DUPLICATO O ERRORE ({email}): {e}")
+            logger.warning("UTENTE DUPLICATO O ERRORE (%s): %s", email, e)
             skipped += 1
 
     conn.commit()
     conn.close()
 
     print(f"Import completato. Inseriti: {inserted}, Skippati: {skipped}")
+
 
 if __name__ == "__main__":
     main()
