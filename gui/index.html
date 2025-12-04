@@ -4804,6 +4804,7 @@
     document.addEventListener("focusin", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
+      if (target.closest("#sheet-admin")) return;
       if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") return;
 
       const modal = target.closest(".sheet");
