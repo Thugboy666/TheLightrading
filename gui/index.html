@@ -2044,6 +2044,39 @@
     showBadges();
   };
 
+  function scrollOrdersSheetToTop() {
+    const sheetOrders = document.getElementById("sheet-orders");
+    if (!sheetOrders) return;
+
+    // se esiste un contenitore scrollabile interno, usalo
+    const scrollContainer =
+      sheetOrders.querySelector(".sheet") ||
+      sheetOrders.closest(".sheet") ||
+      sheetOrders;
+
+    // resetta lo scroll interno della lista ordini
+    if (scrollContainer && typeof scrollContainer.scrollTop === "number") {
+      scrollContainer.scrollTop = 0;
+    }
+
+    // porta il foglio ordini in vista, con il titolo visibile
+    setTimeout(() => {
+      try {
+        (sheetOrders.scrollIntoView || scrollContainer.scrollIntoView).call(
+          sheetOrders.scrollIntoView ? sheetOrders : scrollContainer,
+          {
+            behavior: "smooth",
+            block: "start",
+          }
+        );
+      } catch (e) {
+        const rect = sheetOrders.getBoundingClientRect();
+        const offset = window.scrollY + rect.top - 16;
+        window.scrollTo({ top: offset, behavior: "smooth" });
+      }
+    }, 80);
+  }
+
   document.getElementById("btn-register").addEventListener("click", () => showSheet(sheetRegister));
   document.getElementById("btn-reg-cancel").addEventListener("click", () => hideSheet(sheetRegister));
   document.getElementById("btn-login").addEventListener("click", () => {
@@ -2078,17 +2111,7 @@
     btnOrders.addEventListener("click", () => {
       window.CURRENT_VIEW = "orders";
       showSheet(sheetOrders);
-
-      // forza la pagina in alto quando entro negli ordini
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-
-      // se il foglio ordini è scrollabile internamente, resetta il suo scroll
-      const ordersModal = document.querySelector("#sheet-orders .sheet");
-      if (ordersModal) {
-        ordersModal.scrollTop = 0;
-      }
+      scrollOrdersSheetToTop();
     });
   }
   if (btnOrdersShortcut) {
@@ -4005,6 +4028,7 @@
 
     if (!orders || !orders.length) {
       ordersEmpty.style.display = "block";
+      scrollOrdersSheetToTop();
       return;
     }
 
@@ -4055,6 +4079,8 @@
       card.append(header, badgesRow, meta, totalRow);
       ordersCards.appendChild(card);
     });
+
+    scrollOrdersSheetToTop();
   }
 
   function openOrders() {
