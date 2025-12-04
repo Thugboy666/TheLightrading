@@ -719,6 +719,13 @@
         z-index: 999999;
       }
     }
+
+    body.keyboard-open .admin-panel,
+    body.keyboard-open .admin-root {
+      transform: none !important;
+      margin-top: 0 !important;
+      top: auto !important;
+    }
   </style>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
@@ -1310,7 +1317,7 @@
 
   <!-- MODAL: ADMIN -->
   <div class="backdrop" id="sheet-admin">
-    <div class="sheet">
+    <div class="sheet admin-panel admin-root">
       <h2>Pannello Admin</h2>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <button class="btn" id="admin-tab-clients">Clienti</button>
@@ -1650,6 +1657,8 @@
 <script>
   const BASE_URL = "http://127.0.0.1:8080"; // API ecom locale (Termux / backend thelight24)
   const LLM_URL = "http://127.0.0.1:8081/completion";
+
+  window.CURRENT_VIEW = window.CURRENT_VIEW || "user";
 
   const SYSTEM_TEXTURES = {
     ormanet: "/assets/textures/1.png",
@@ -2070,10 +2079,16 @@
     btnOrdersShortcut.addEventListener("click", () => openOrders());
   }
   if (btnAdmin) {
-    btnAdmin.addEventListener("click", () => showSheet(sheetAdmin));
+    btnAdmin.addEventListener("click", () => {
+      window.CURRENT_VIEW = "admin";
+      showSheet(sheetAdmin);
+    });
   }
   if (btnAdminClose) {
-    btnAdminClose.addEventListener("click", () => hideSheet(sheetAdmin));
+    btnAdminClose.addEventListener("click", () => {
+      window.CURRENT_VIEW = "user";
+      hideSheet(sheetAdmin);
+    });
   }
   if (btnOrdersClose) {
     btnOrdersClose.addEventListener("click", () => hideSheet(sheetOrders));
@@ -3502,6 +3517,11 @@
 
   if (isMobile()) {
     window.addEventListener("focusin", (e) => {
+      if (window.CURRENT_VIEW === "admin") {
+        const box = document.querySelector(".daily-offer-box");
+        if (box) box.classList.remove("keyboard-open");
+        return;
+      }
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
         const box = document.querySelector(".daily-offer-box");
         if (box) box.classList.add("keyboard-open");
@@ -4996,6 +5016,10 @@
 
     document.addEventListener("focusin", (event) => {
       const target = event.target;
+      if (window.CURRENT_VIEW === "admin") {
+        document.body.classList.remove("keyboard-open");
+        return;
+      }
       if (!(target instanceof HTMLElement)) return;
       if (target.closest("#sheet-admin")) return;
       if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") return;
