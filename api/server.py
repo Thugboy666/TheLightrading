@@ -667,14 +667,6 @@ async def account_orders(request: web.Request) -> web.Response:
 
 
 async def admin_notification_settings_get(request: web.Request) -> web.Response:
-    user, _ = get_user_from_request(request)
-    if not user:
-        return web.json_response(
-            {"status": "error", "message": "Non autorizzato"}, status=401
-        )
-    if not user.get("is_admin"):
-        return web.json_response({"status": "forbidden"}, status=403)
-
     settings = get_notification_settings()
     response = {
         "notify_macro_offers": bool(settings.get("notify_macro_offers", True)),
@@ -686,15 +678,12 @@ async def admin_notification_settings_get(request: web.Request) -> web.Response:
 
 
 async def admin_notification_settings_save(request: web.Request) -> web.Response:
-    user, _ = get_user_from_request(request)
-    if not user:
+    try:
+        body = await request.json()
+    except Exception:
         return web.json_response(
-            {"status": "error", "message": "Non autorizzato"}, status=401
+            {"status": "error", "message": "Payload non valido"}, status=400
         )
-    if not user.get("is_admin"):
-        return web.json_response({"status": "forbidden"}, status=403)
-
-    body = await request.json()
     expected_keys = {
         "notify_macro_offers",
         "notify_daily_deal",

@@ -3368,6 +3368,7 @@
     try {
       const res = await fetch(BASE_URL + "/admin/notifications/settings", {
         headers: buildAuthHeaders(),
+        credentials: "same-origin",
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -3396,9 +3397,18 @@
       const res = await fetch(BASE_URL + "/admin/notifications/settings", {
         method: "POST",
         headers: buildAuthHeaders(),
+        credentials: "same-origin",
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+      if (res.status === 401) {
+        console.error("Non autorizzato a salvare le impostazioni notifiche");
+        if (notificationSettingsStatus) {
+          notificationSettingsStatus.textContent =
+            "Sessione scaduta o non autorizzato. Riesegui il login admin.";
+        }
+        return;
+      }
       if (!res.ok || data.status !== "ok") {
         throw new Error(data.message || "Errore salvataggio");
       }
