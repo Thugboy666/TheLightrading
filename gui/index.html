@@ -719,13 +719,6 @@
         z-index: 999999;
       }
     }
-
-    body.keyboard-open .admin-panel,
-    body.keyboard-open .admin-root {
-      transform: none !important;
-      margin-top: 0 !important;
-      top: auto !important;
-    }
   </style>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
@@ -5035,15 +5028,18 @@
     function handleKeyboardOpen(event) {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && target.tagName !== "SELECT") return;
 
-      // Se il campo è dentro uno sheet (login, register, ADMIN, ecc.)
+      // Consideriamo solo input, textarea e select
+      const tag = target.tagName;
+      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return;
+
+      // Se il campo è dentro uno sheet (login, register, ADMIN, promo, ecc.)
       const modal = target.closest(".sheet");
       const scrollContainer = modal || document.scrollingElement || document.body;
 
       setTimeout(() => {
         try {
-          // Centra il campo nella viewport (funziona anche per il pannello admin)
+          // Centra il campo nella viewport, vale anche per il pannello admin
           target.scrollIntoView({
             behavior: "smooth",
             block: "center",
@@ -5061,31 +5057,13 @@
       }, 150);
     }
 
-    function handleKeyboardClose(event) {
+    function handleKeyboardClose(_event) {
+      // Non facciamo nulla alla chiusura, così non forziamo l'admin a tornare su/giù
       return;
     }
 
-    function isAdminPanelActive() {
-      return document.body.classList.contains("admin-mode");
-    }
-
-    document.addEventListener(
-      "focusin",
-      (event) => {
-        if (isAdminPanelActive()) return;
-        handleKeyboardOpen(event);
-      },
-      true
-    );
-
-    document.addEventListener(
-      "focusout",
-      (event) => {
-        if (isAdminPanelActive()) return;
-        handleKeyboardClose(event);
-      },
-      true
-    );
+    document.addEventListener("focusin", handleKeyboardOpen, true);
+    document.addEventListener("focusout", handleKeyboardClose, true);
   }
 
   function getLatestValidUntil(rules = []) {
