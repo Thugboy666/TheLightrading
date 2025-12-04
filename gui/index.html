@@ -720,6 +720,20 @@
       }
     }
 
+    @media (max-width: 800px) {
+      .sheet.admin-panel.admin-keyboard-open {
+        position: fixed !important;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        margin: 0;
+        transform: translateY(-16vh);
+        max-height: 64vh;
+        overflow-y: auto;
+        z-index: 999999;
+      }
+    }
+
     body.keyboard-open .admin-panel,
     body.keyboard-open .admin-root {
       transform: none !important;
@@ -3527,20 +3541,37 @@
 
   if (isMobile()) {
     window.addEventListener("focusin", (e) => {
-      if (window.CURRENT_VIEW === "admin") {
-        const box = document.querySelector(".daily-offer-box");
-        if (box) box.classList.remove("keyboard-open");
+      const target = e.target;
+      if (!target || !(target instanceof HTMLElement)) return;
+      const tag = target.tagName;
+      const isTextInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      if (!isTextInput) return;
+
+      const dailyBox = document.querySelector(".daily-offer-box");
+      const adminSheet = document.querySelector("#sheet-admin .sheet.admin-panel");
+
+      // Se siamo nel pannello ADMIN e il focus è dentro lo sheet admin
+      if (window.CURRENT_VIEW === "admin" && adminSheet && target.closest("#sheet-admin")) {
+        // Assicuriamoci che la daily offer non sia in modalità keyboard-open
+        if (dailyBox) dailyBox.classList.remove("keyboard-open");
+        // Applichiamo la classe che ancora il pannello admin sopra la tastiera
+        adminSheet.classList.add("admin-keyboard-open");
         return;
       }
-      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-        const box = document.querySelector(".daily-offer-box");
-        if (box) box.classList.add("keyboard-open");
+
+      // Altrimenti comportamento standard per la daily offer
+      if (dailyBox && target.closest(".daily-offer-box")) {
+        dailyBox.classList.add("keyboard-open");
       }
     });
 
     window.addEventListener("focusout", () => {
-      const box = document.querySelector(".daily-offer-box");
-      if (box) box.classList.remove("keyboard-open");
+      const dailyBox = document.querySelector(".daily-offer-box");
+      if (dailyBox) dailyBox.classList.remove("keyboard-open");
+
+      const adminSheet = document.querySelector("#sheet-admin .sheet.admin-panel");
+      if (adminSheet) adminSheet.classList.remove("admin-keyboard-open");
     });
   }
 
