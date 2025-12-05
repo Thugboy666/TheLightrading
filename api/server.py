@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -1597,15 +1598,29 @@ app = create_app()
 
 def main() -> None:
     """Avvia il server API aiohttp."""
-    host = os.environ.get("API_HOST", "127.0.0.1")
-    port = int(os.environ.get("API_PORT", 8080))
+    host = "0.0.0.0"
+    port = 8090
+
+    env_port = os.environ.get("API_PORT")
+    if env_port:
+        try:
+            port = int(env_port)
+        except ValueError:
+            pass
+
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except ValueError:
+            pass
+
     logger.info(
         "Avvio TheLight24 API server su %s:%s (LLM_BACKEND_URL=%s)",
         host,
         port,
         LLM_BACKEND_URL,
     )
-    web.run_app(app, host="127.0.0.1", port=8080)
+    web.run_app(app, host=host, port=port)
 
 
 if __name__ == "__main__":
