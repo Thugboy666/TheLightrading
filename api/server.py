@@ -1005,6 +1005,38 @@ async def admin_clients_import_promo(request: web.Request) -> web.Response:
     )
 
 
+PROMO_CONFIG_META_KEY = "promo_config"
+
+
+async def admin_get_promo_config(request: web.Request) -> web.Response:
+    """Restituisce la configurazione corrente della promo dal meta store."""
+
+    raw = get_meta_value(PROMO_CONFIG_META_KEY)
+    if not raw:
+        config = {"start_date": None, "end_date": None}
+    else:
+        try:
+            config = json.loads(raw)
+        except Exception:
+            config = {"start_date": None, "end_date": None}
+
+    return web.json_response(config)
+
+
+async def admin_save_promo_config(request: web.Request) -> web.Response:
+    """Salva la configurazione promo ricevuta dal frontend."""
+
+    data = await request.json()
+    config = dict(data)
+
+    config.setdefault("start_date", data.get("start_date"))
+    config.setdefault("end_date", data.get("end_date"))
+
+    set_meta_value(PROMO_CONFIG_META_KEY, json.dumps(config, ensure_ascii=False))
+
+    return web.json_response({"status": "ok", "config": config})
+
+
 PROMO_POINTS = {
     "FOLLOW_SOCIAL": 5,
     "ADD_BROADCAST": 50,
@@ -1560,6 +1592,8 @@ def create_app() -> web.Application:
     app.router.add_post("/admin/clients/save", admin_clients_save)
     app.router.add_post("/admin/clients/delete", admin_clients_delete)
     app.router.add_post("/admin/clients/import_promo", admin_clients_import_promo)
+    app.router.add_get("/admin/promo/config", admin_get_promo_config)
+    app.router.add_post("/admin/promo/config", admin_save_promo_config)
     app.router.add_post("/admin/promo/add_points", admin_promo_add_points)
     app.router.add_get("/admin/promo/summary", admin_promo_summary)
     app.router.add_get("/admin/offers/all", admin_offers_all)
