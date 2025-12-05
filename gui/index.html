@@ -321,14 +321,21 @@
 
     /* Top-right controls (Indietro + Chat AI) agganciati alla navbar */
     #top-right-controls {
+      position: fixed;
+      top: 10px;
+      right: 10px;
       display: flex;
       flex-direction: row;
       justify-content: flex-end;
       align-items: center;
       gap: 6px;
-      margin-top: 4px;
-      width: 100%;
+      padding: 4px 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.95);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      z-index: 120;
       pointer-events: auto;
+      flex-wrap: nowrap;
     }
     .top-ctrl-btn {
       pointer-events: auto;
@@ -352,7 +359,8 @@
       #top-right-controls {
         flex-wrap: wrap;
         gap: 4px;
-        margin-top: 4px;
+        padding: 4px;
+        right: 6px;
       }
     }
 
@@ -2248,6 +2256,7 @@
   const btnDailyToggle = document.getElementById("btn-daily-toggle");
   const btnDailyDelete = document.getElementById("btn-daily-delete");
 
+  const topRightControls = document.getElementById("top-right-controls");
   const btnBack = document.getElementById("btn-back");
   const btnOpenLlm = document.getElementById("btn-open-llm");
 
@@ -2267,6 +2276,16 @@
 
   let editingProduct = null;
   let editingClientId = null;
+
+  function positionTopRightControls() {
+    if (!topRightControls) return;
+    const topBar = document.getElementById("top-bar");
+    const offset = (topBar?.offsetHeight || 0) + 6;
+    topRightControls.style.top = `${offset}px`;
+  }
+
+  positionTopRightControls();
+  window.addEventListener("load", positionTopRightControls);
 
   const getBadgeNodes = () => document.querySelectorAll(
     [
@@ -6182,6 +6201,7 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    positionTopRightControls();
   });
 
   // Pulsante INDIETRO: chiude sheet aperti, reset se non c'è history
@@ -6196,9 +6216,13 @@
     }
     if (window.history.length > 1) {
       window.history.back();
-    } else {
-      resetToGalaxy();
+      return;
     }
+    if (window.location.pathname !== "/") {
+      window.location.href = "/";
+      return;
+    }
+    resetToGalaxy();
   });
 
   // LLM CHAT FRONTEND
