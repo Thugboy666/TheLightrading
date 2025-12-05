@@ -1325,7 +1325,7 @@
         <button class="btn" id="admin-tab-clients">Clienti</button>
         <button class="btn secondary" id="admin-tab-offers">Macro Offerte</button>
         <button class="btn secondary" id="admin-tab-import">Import Listino</button>
-        <button class="btn secondary" id="admin-tab-promo">Promo Natale</button>
+        <button class="btn secondary" id="admin-tab-promo">Promo</button>
       </div>
       <div id="admin-section-clients">
         <h3 style="margin:4px 0;">Gestione clienti</h3>
@@ -1618,6 +1618,14 @@
         <div class="html-preview" id="promo-clients-preview"></div>
 
         <h4 style="margin:10px 0 4px 0;">Gestione punti</h4>
+        <label for="promo-client-search">Cerca cliente promo</label>
+        <input
+          type="text"
+          id="promo-client-search"
+          class="input-text"
+          placeholder="Digita una parte del nome cliente..."
+          autocomplete="off"
+        />
         <div class="two-cols">
           <div class="field">
             <label>Cliente promo</label>
@@ -1695,6 +1703,7 @@
   let priceList = [];
   let dailyOffer = null;
   let clients = [];
+  let promoClientsAll = [];
   let macroOffers = [];
   const offersUniverse = [
     {
@@ -1945,6 +1954,7 @@
   const promoClientsFileInput = document.getElementById("promo-clients-file");
   const btnPromoClientsUpload = document.getElementById("btn-promo-clients-upload");
   const promoClientsPreview = document.getElementById("promo-clients-preview");
+  const promoClientSearchInput = document.getElementById("promo-client-search");
   const promoClientSelect = document.getElementById("promo-client-select");
   const promoClientPoints = document.getElementById("promo-client-points");
   const promoActionSelect = document.getElementById("promo-action-select");
@@ -2157,6 +2167,11 @@
   if (priceListSearchInput) {
     priceListSearchInput.addEventListener("input", (e) => {
       renderPriceListTable(e.target.value);
+    });
+  }
+  if (promoClientSearchInput) {
+    promoClientSearchInput.addEventListener("input", (e) => {
+      filterPromoClientsBySearchTerm(e.target.value);
     });
   }
   if (dailyProductSearchInput) {
@@ -2618,21 +2633,93 @@
     return clients.find((c) => (c.email || "").toLowerCase() === emailLower) || null;
   }
 
+  function renderPromoClientOptions(clientsList) {
+    if (!promoClientSelect) return;
+
+    const currentValue = promoClientSelect.value;
+    promoClientSelect.innerHTML = "";
+
+    if (!clientsList.length) {
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "Nessun cliente promo";
+      promoClientSelect.appendChild(emptyOption);
+      if (promoClientPoints) promoClientPoints.value = "";
+      if (promoSummaryBox) promoSummaryBox.innerHTML = "";
+      return;
+    }
+
+    clientsList.forEach((c) => {
+      const opt = document.createElement("option");
+      const baseLabel =
+        (c.ragione_sociale || c.name || "").trim() ||
+        (c.codice || c.code || "").trim() ||
+        (c.email || "").trim() ||
+        "Cliente senza nome";
+      const emailLabel = c.email ? ` (${c.email})` : "";
+      const pointsLabel =
+        typeof c.promo_points === "number" || c.promo_points
+          ? ` – ${c.promo_points || 0} pt`
+          : "";
+      opt.value = c.id || c.codice || c.code || baseLabel;
+      opt.textContent = `${baseLabel}${emailLabel}${pointsLabel}`;
+      promoClientSelect.appendChild(opt);
+    });
+
+    if (currentValue) {
+      const exists = Array.from(promoClientSelect.options).some((o) => o.value === currentValue);
+      if (exists) {
+        promoClientSelect.value = currentValue;
+      }
+    }
+
+    if (!promoClientSelect.value && promoClientSelect.options.length) {
+      promoClientSelect.value = promoClientSelect.options[0].value;
+    }
+  }
+
+  function setPromoClients(promoClients) {
+    promoClientsAll = Array.isArray(promoClients) ? promoClients : [];
+    renderPromoClientOptions(promoClientsAll);
+  }
+
+  function filterPromoClientsBySearchTerm(term) {
+    const normalized = (term || "").toLowerCase().trim();
+
+    if (!normalized) {
+      renderPromoClientOptions(promoClientsAll);
+      return;
+    }
+
+    const filtered = promoClientsAll.filter((c) => {
+      const name = (c.ragione_sociale || c.name || "").toLowerCase();
+      const code = (c.codice || c.code || "").toLowerCase();
+      return name.includes(normalized) || code.includes(normalized);
+    });
+
+    renderPromoClientOptions(filtered);
+  }
+
   function refreshPromoClientsSelect() {
     if (!promoClientSelect) return;
     const promoClients = clients.filter((c) => c.promo_enabled);
     if (!promoClients.length) {
+      promoClientsAll = [];
       promoClientSelect.innerHTML = '<option value="">Nessun cliente promo</option>';
       if (promoClientPoints) promoClientPoints.value = "";
       if (promoSummaryBox) promoSummaryBox.innerHTML = "";
       return;
     }
-    promoClientSelect.innerHTML = promoClients
-      .map(
-        (c) =>
-          `<option value="${c.id}">${c.ragione_sociale || c.email || "Cliente"} (${c.email || "-"}) – ${c.promo_points || 0} pt</option>`
-      )
-      .join("");
+
+    setPromoClients(promoClients);
+
+    const searchTerm = promoClientSearchInput ? promoClientSearchInput.value : "";
+    if (searchTerm) {
+      filterPromoClientsBySearchTerm(searchTerm);
+    } else {
+      renderPromoClientOptions(promoClientsAll);
+    }
+
     if (promoClientSelect.value) {
       fetchPromoSummary(promoClientSelect.value);
     }
