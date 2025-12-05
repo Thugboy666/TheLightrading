@@ -466,6 +466,11 @@
       color: #0f172a;
       padding: 8px 4px 0;
     }
+    .promo-extra-text {
+      margin: 6px 0;
+      font-size: 13px;
+      line-height: 1.35;
+    }
     .tag {
       border-radius: 999px;
       font-size: 9px;
@@ -1209,11 +1214,13 @@
   <!-- MODAL: PROMO PUNTI -->
   <div class="backdrop" id="sheet-promo-points">
     <div class="sheet">
-      <h2>Promo Natale – Stato punti</h2>
+      <h2 id="promo-points-title">Promo Natale – Stato punti</h2>
       <div id="promo-points-card">
         <div id="promo-points-value">0 punti</div>
         <div id="promo-points-status">Aggiorniamo il tuo saldo punti…</div>
       </div>
+      <div id="promo-promo-description" class="promo-extra-text" style="display:none;"></div>
+      <div id="promo-promo-actions" class="promo-extra-text" style="display:none;"></div>
       <div id="promo-points-inactive" style="display:none;">
         Non risulti attivo sulla Promo Natale. Contatta il tuo referente commerciale Ormanet per essere abilitato.
       </div>
@@ -1761,6 +1768,24 @@
             <input id="promo-end-date" type="date" />
           </div>
         </div>
+        <div class="field">
+          <label for="promo-description">Descrizione promo</label>
+          <textarea
+            id="promo-description"
+            class="textarea"
+            rows="3"
+            placeholder="Inserisci una descrizione sintetica della promo..."
+          ></textarea>
+        </div>
+        <div class="field">
+          <label for="promo-actions-text">Azioni e punti (testo cliente)</label>
+          <textarea
+            id="promo-actions-text"
+            class="textarea"
+            rows="4"
+            placeholder="Es: Segui i social = +5 pt\nAggiungi il numero broadcast = +50 pt"
+          ></textarea>
+        </div>
         <div class="sheet-actions" style="margin-top:4px;">
           <button class="btn" id="btn-promo-save-config">Salva config promo</button>
         </div>
@@ -1878,6 +1903,13 @@
     miniOfferEnabled: false,
   };
 
+  let currentPromoConfig = {
+    name: "",
+    description: "",
+    actions_text: "",
+    start_date: null,
+    end_date: null,
+  };
   let promoConfig = {
     start_date: null,
     end_date: null,
@@ -2150,12 +2182,17 @@
   const promoActionsEditor = document.getElementById("promo-actions-editor");
   const promoActionAddBtn = document.getElementById("promo-action-add");
   const promoNameInput = document.getElementById("promo-name");
+  const promoDescriptionInput = document.getElementById("promo-description");
+  const promoActionsInput = document.getElementById("promo-actions-text");
   const promoRulesText = document.getElementById("promo-rules-text");
   const btnPromoAddPoints = document.getElementById("btn-promo-add-points");
   const btnPromoSaveConfig = document.getElementById("btn-promo-save-config");
   const promoStartDateInput = document.getElementById("promo-start-date");
   const promoEndDateInput = document.getElementById("promo-end-date");
   const promoSummaryBox = document.getElementById("promo-summary");
+  const promoPointsTitle = document.getElementById("promo-points-title");
+  const promoPromoDescription = document.getElementById("promo-promo-description");
+  const promoPromoActions = document.getElementById("promo-promo-actions");
 
   const notifyMacroOffersInput = document.getElementById("notify_macro_offers");
   const notifyDailyDealInput = document.getElementById("notify_daily_deal");
@@ -3224,22 +3261,70 @@
     updatePromoActionSelectFromEditor();
   }
 
+  function getPromoDisplayName() {
+    const name = (currentPromoConfig?.name || promoConfig?.name || "").trim();
+    return name || "Offerta Natale";
+  }
+
+  function updatePromoTextsFromConfig() {
+    const promoTitle = `${getPromoDisplayName()} – Stato punti`;
+    if (promoPointsTitle) {
+      promoPointsTitle.textContent = promoTitle;
+    }
+    if (promoPointsInactive) {
+      promoPointsInactive.textContent = `Non risulti attivo sulla ${getPromoDisplayName()}. Contatta il tuo referente commerciale Ormanet per essere abilitato.`;
+    }
+
+    if (promoPromoDescription) {
+      const desc = (currentPromoConfig.description || "").trim();
+      promoPromoDescription.style.display = desc ? "block" : "none";
+      promoPromoDescription.textContent = desc;
+    }
+
+    if (promoPromoActions) {
+      const actionsHtml = (currentPromoConfig.actions_text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => `<li>${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`)
+        .join("");
+
+      if (actionsHtml) {
+        promoPromoActions.style.display = "block";
+        promoPromoActions.innerHTML = `<strong>Azioni e punti:</strong><ul>${actionsHtml}</ul>`;
+      } else {
+        promoPromoActions.style.display = "none";
+        promoPromoActions.innerHTML = "";
+      }
+    }
+  }
+
   function setPromoConfig(cfg = {}) {
     const normalizedActions = (Array.isArray(cfg.actions) && cfg.actions.length ? cfg.actions : defaultPromoActions).map(
       (action, idx) => normalizePromoAction(action, idx)
     );
-    promoConfig = {
+    currentPromoConfig = {
+      name: (cfg.name || "").trim(),
+      description: cfg.description || "",
+      actions_text: cfg.actions_text || "",
       start_date: cfg.start_date || null,
       end_date: cfg.end_date || null,
-      name: cfg.name || "",
+    };
+    promoConfig = {
+      start_date: currentPromoConfig.start_date,
+      end_date: currentPromoConfig.end_date,
+      name: currentPromoConfig.name,
       actions: normalizedActions,
       rules_text: cfg.rules_text || cfg.rulesText || defaultPromoRulesText,
     };
-    if (promoNameInput) promoNameInput.value = promoConfig.name || "";
-    if (promoStartDateInput) promoStartDateInput.value = promoConfig.start_date || "";
-    if (promoEndDateInput) promoEndDateInput.value = promoConfig.end_date || "";
+    if (promoNameInput) promoNameInput.value = getPromoDisplayName();
+    if (promoStartDateInput) promoStartDateInput.value = currentPromoConfig.start_date || "";
+    if (promoEndDateInput) promoEndDateInput.value = currentPromoConfig.end_date || "";
+    if (promoDescriptionInput) promoDescriptionInput.value = currentPromoConfig.description || "";
+    if (promoActionsInput) promoActionsInput.value = currentPromoConfig.actions_text || "";
     renderPromoActionsEditor(promoConfig.actions);
     if (promoRulesText) promoRulesText.value = promoConfig.rules_text || "";
+    updatePromoTextsFromConfig();
     addNataleIcon();
   }
 
@@ -3371,7 +3456,9 @@
     const payload = {
       start_date: promoStartDateInput?.value || null,
       end_date: promoEndDateInput?.value || null,
-      name: promoNameInput?.value || "",
+      name: promoNameInput?.value || "Offerta Natale",
+      description: promoDescriptionInput?.value || "",
+      actions_text: promoActionsInput?.value || "",
       actions: collectPromoActionsFromEditor(),
       rules_text: promoRulesText?.value || "",
     };
@@ -5436,6 +5523,7 @@
 
   function renderPromoPointsSheet(points, statusText) {
     if (!promoPointsCard || !promoPointsValue || !promoPointsStatus || !promoPointsInactive) return;
+    updatePromoTextsFromConfig();
     promoPointsCard.style.display = "flex";
     promoPointsInactive.style.display = "none";
     const safePoints = Number.isFinite(points) ? points : 0;
@@ -5448,17 +5536,18 @@
     if (!promoPointsCard || !promoPointsInactive) return;
     promoPointsCard.style.display = "none";
     promoPointsInactive.style.display = "block";
-    promoPointsInactive.textContent = message;
+    promoPointsInactive.textContent = message || `Non risulti attivo sulla ${getPromoDisplayName()}. Contatta il tuo referente commerciale Ormanet per essere abilitato.`;
   }
 
   async function showPromoPointsView() {
     if (!sheetPromoPoints) return;
+    updatePromoTextsFromConfig();
     const promoClient = getCurrentClientRecord();
     const isPromoClient = currentUser.logged && promoClient?.promo_enabled;
 
     if (!isPromoClient) {
       renderPromoPointsInactiveMessage(
-        "Non risulti attivo sulla Promo Natale. Contatta il tuo referente commerciale Ormanet per essere abilitato."
+        `Non risulti attivo sulla ${getPromoDisplayName()}. Contatta il tuo referente commerciale Ormanet per essere abilitato.`
       );
       showSheet(sheetPromoPoints);
       return;
@@ -5548,7 +5637,7 @@
   }
 
   function getPromoBadgeLabel() {
-    return (promoConfig.name || "").trim() || "Offerta Natale";
+    return getPromoDisplayName();
   }
 
   function isPromoActiveNow() {
@@ -6083,6 +6172,7 @@
   });
   renderPromoActionsEditor(promoConfig.actions);
   renderPromoRulesStatic();
+  updatePromoTextsFromConfig();
   bootstrapUniverse();
 
   function nascondiBadge3D() {
