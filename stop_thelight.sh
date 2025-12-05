@@ -3,33 +3,36 @@
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$BASEDIR"
 
-if [ "$(basename "$BASEDIR")" != "TheLightrading" ]; then
-    echo "❌ Questo script è riservato al progetto TheLightrading. Directory corrente: $BASEDIR"
-    exit 1
-fi
-
-PID_FILE="thelightrading.pid"
+PID_FILE_API="thelightrading_api.pid"
+PID_FILE_LLM="thelightrading_llm.pid"
 
 echo "----- 🛑 STOP THELIGHTRADING -----"
 echo "BASEDIR = $BASEDIR"
 
-if [ -f "$PID_FILE" ]; then
-    PID="$(cat "$PID_FILE" 2>/dev/null)"
-
-    if [ -n "$PID" ] && kill "$PID" 2>/dev/null; then
-        echo "✅ Arrestato TheLightrading (PID $PID)."
+# Stop API
+if [ -f "$PID_FILE_API" ]; then
+    PID_API="$(cat "$PID_FILE_API" 2>/dev/null)"
+    if [ -n "$PID_API" ] && kill "$PID_API" 2>/dev/null; then
+        echo "✅ Arrestata API TheLightrading (PID $PID_API)."
     else
-        echo "⚠ PID nel file ($PID) non valido o processo già morto."
+        echo "⚠ PID API ($PID_API) non valido o processo già morto."
     fi
-
-    rm -f "$PID_FILE"
-    exit 0
+    rm -f "$PID_FILE_API"
+else
+    echo "ℹ Nessun file PID API trovato, provo pkill su api.server 8090..."
+    pkill -f "api.server 8090" 2>/dev/null && echo "✅ Arrestata API via pkill."
 fi
 
-echo "ℹ Nessun file PID trovato, provo a fermare per pattern di comando..."
-pkill -f "api/server.py 8090" 2>/dev/null && {
-    echo "✅ Arrestato TheLightrading tramite pkill su api/server.py 8090."
-    exit 0
-}
-
-echo "ℹ Nessun processo TheLightrading trovato da fermare."
+# Stop LLM
+if [ -f "$PID_FILE_LLM" ]; then
+    PID_LLM="$(cat "$PID_FILE_LLM" 2>/dev/null)"
+    if [ -n "$PID_LLM" ] && kill "$PID_LLM" 2>/dev/null; then
+        echo "✅ Arrestato LLM (PID $PID_LLM)."
+    else
+        echo "⚠ PID LLM ($PID_LLM) non valido o processo già morto."
+    fi
+    rm -f "$PID_FILE_LLM"
+else
+    echo "ℹ Nessun file PID LLM trovato, provo pkill su llama-server..."
+    pkill -f "llama-server" 2>/dev/null && echo "✅ Arrestato LLM via pkill."
+fi
