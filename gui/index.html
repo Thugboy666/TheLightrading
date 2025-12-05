@@ -94,12 +94,12 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    .daily-offer-row {
-      margin-top: 4px;
-      flex-direction: column;
+    .daily-offer-wrapper {
+      display: flex;
+      flex-direction: row;
       align-items: center;
-      justify-content: center;
-      gap: 6px;
+      gap: 10px;
+      flex-wrap: nowrap;
     }
     .daily-offer-btn {
       display: inline-flex;
@@ -117,9 +117,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-top: 6px;
-      justify-content: center;
-      flex-wrap: wrap;
+      margin-top: 0;
+      flex-wrap: nowrap;
     }
 
     .quick-action-btn {
@@ -287,6 +286,11 @@
       #brand-title { font-size: 11px; }
       #brand-sub { display: none; }
       #user-panel { gap: 4px; }
+      .daily-offer-wrapper {
+        flex-wrap: wrap;
+        row-gap: 6px;
+      }
+      .quick-actions-row { justify-content: flex-start; }
       #btn-orders, #btn-login, #btn-register {
         padding-inline: 6px;
         font-size: 10px;
@@ -300,17 +304,16 @@
       }
     }
 
-    /* Top-right controls (Indietro + Chat AI) */
+    /* Top-right controls (Indietro + Chat AI) agganciati alla navbar */
     #top-right-controls {
-      position: absolute;
-      top: 52px;
-      right: 10px;
-      z-index: 25;
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
+      flex-direction: row;
+      justify-content: flex-end;
+      align-items: center;
       gap: 6px;
-      pointer-events: none; /* noi riabilitiamo sui bottoni */
+      margin-top: 4px;
+      width: 100%;
+      pointer-events: auto;
     }
     .top-ctrl-btn {
       pointer-events: auto;
@@ -332,12 +335,9 @@
 
     @media (max-width: 480px) {
       #top-right-controls {
-        top: 72px;
-        right: 8px;
-        flex-direction: row;
         flex-wrap: wrap;
         gap: 4px;
-        justify-content: flex-end;
+        margin-top: 4px;
       }
     }
 
@@ -850,78 +850,77 @@
         <div id="brand-title"></div>
       </div>
 
-      <div id="user-panel">
-        <div class="pill" id="tier-pill">
-          <span class="label">Listino:</span>
-          <span id="tier-label">ospite</span>
-        </div>
-        <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
-        <button class="btn secondary" id="btn-orders">📄 Ordini</button>
-        <button class="btn secondary" id="btn-login">Login</button>
-        <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
-        <button class="btn" id="btn-register">Registrati</button>
-      </div>
-    </div>
-
-    <div class="top-bar-row daily-offer-row">
-      <button class="btn daily-offer-btn" id="btn-daily-offer">
-        <span class="daily-offer-icon">
-          <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
-        </span>
-        <span class="daily-offer-text">
-          <span class="daily-offer-line1">Offerta daily</span>
-          <span class="daily-offer-line2">prodotto del giorno in sconto</span>
-        </span>
-      </button>
-
-      <div class="quick-actions-row">
-        <button
-          type="button"
-          class="quick-action-btn"
-          id="btn-quick-phone"
-          aria-label="Chiama Ormanet"
-        >
-          <img src="/assets/textures/phone.png" alt="Telefono" />
+      <div class="daily-offer-wrapper">
+        <button class="btn daily-offer-btn" id="btn-daily-offer">
+          <span class="daily-offer-icon">
+            <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
+          </span>
+          <span class="daily-offer-text">
+            <span class="daily-offer-line1">Offerta daily</span>
+            <span class="daily-offer-line2">prodotto del giorno in sconto</span>
+          </span>
         </button>
 
-        <button
-          type="button"
-          class="quick-action-btn"
-          id="btn-quick-whats"
-          aria-label="WhatsApp Ormanet"
-        >
-          <img src="/assets/textures/whats.png" alt="WhatsApp" />
-        </button>
-
-        <div class="quick-action-mail-wrapper">
+        <div class="quick-actions-row">
           <button
             type="button"
             class="quick-action-btn"
-            id="btn-quick-mail"
-            aria-label="Invia email a Ormanet"
+            id="btn-quick-phone"
+            aria-label="Chiama Ormanet"
           >
-            <img src="/assets/textures/mail.png" alt="Email" />
+            <img src="/assets/textures/phone.png" alt="Telefono" />
           </button>
 
-          <div class="quick-mail-menu" id="quick-mail-menu">
-            <button type="button" data-email="oriana@ormanet.it">Commerciale Oriana</button>
-            <button type="button" data-email="ivan@ormanet.it">Commerciale Ivan</button>
-            <button type="button" data-email="david@ormanet.it">Commerciale David</button>
-            <button type="button" data-email="marketing@ormanet.it">Area Marketing</button>
+          <button
+            type="button"
+            class="quick-action-btn"
+            id="btn-quick-whats"
+            aria-label="WhatsApp Ormanet"
+          >
+            <img src="/assets/textures/whats.png" alt="WhatsApp" />
+          </button>
+
+          <div class="quick-action-mail-wrapper">
+            <button
+              type="button"
+              class="quick-action-btn"
+              id="btn-quick-mail"
+              aria-label="Invia email a Ormanet"
+            >
+              <img src="/assets/textures/mail.png" alt="Email" />
+            </button>
+
+            <div class="quick-mail-menu" id="quick-mail-menu">
+              <button type="button" data-email="oriana@ormanet.it">Commerciale Oriana</button>
+              <button type="button" data-email="ivan@ormanet.it">Commerciale Ivan</button>
+              <button type="button" data-email="david@ormanet.it">Commerciale David</button>
+              <button type="button" data-email="marketing@ormanet.it">Area Marketing</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- TOP RIGHT: INDIETRO + CHAT AI -->
-  <div id="top-right-controls">
-    <button id="btn-back" class="top-ctrl-btn">
-      <span class="icon">←</span><span>Indietro</span>
-    </button>
-    <button id="btn-open-llm" class="top-ctrl-btn">
-      <span class="icon">✦</span><span>Chat AI</span>
-    </button>
+    <div id="user-panel">
+      <div class="pill" id="tier-pill">
+        <span class="label">Listino:</span>
+        <span id="tier-label">ospite</span>
+      </div>
+      <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
+      <button class="btn secondary" id="btn-orders">📄 Ordini</button>
+      <button class="btn secondary" id="btn-login">Login</button>
+      <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
+      <button class="btn" id="btn-register">Registrati</button>
+    </div>
+
+    <div id="top-right-controls">
+      <button id="btn-back" class="top-ctrl-btn">
+        <span class="icon">←</span><span>Indietro</span>
+      </button>
+      <button id="btn-open-llm" class="top-ctrl-btn">
+        <span class="icon">✦</span><span>Chat AI</span>
+      </button>
+    </div>
   </div>
 
   <!-- BOTTOM PANEL -->
