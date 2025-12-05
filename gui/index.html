@@ -457,7 +457,7 @@
     }
     .sheet {
       width: 100%;
-      max-height: calc(100vh - 24px);
+      max-height: calc(100dvh - 24px);
       background: #ffffff;
       border-radius: 18px 18px 0 0;
       padding: 10px 14px 14px;
@@ -2045,35 +2045,10 @@
   };
 
   function scrollOrdersSheetToTop() {
-    const sheetOrders = document.getElementById("sheet-orders");
-    if (!sheetOrders) return;
-
-    // contenitore scrollabile interno (foglio ordini vero e proprio)
-    const scrollContainer =
-      sheetOrders.querySelector(".sheet") ||
-      sheetOrders.closest(".sheet") ||
-      sheetOrders;
-
-    // resetta lo scroll interno della lista ordini
+    const scrollContainer = document.querySelector("#sheet-orders .sheet");
     if (scrollContainer && typeof scrollContainer.scrollTop === "number") {
       scrollContainer.scrollTop = 0;
     }
-
-    // porta il foglio ordini in vista, con il titolo "Storico ordini" visibile
-    setTimeout(() => {
-      try {
-        const target = sheetOrders;
-        target.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      } catch (e) {
-        const rect = sheetOrders.getBoundingClientRect();
-        // offset leggermente più basso per compensare la barra indirizzo mobile
-        const offset = window.scrollY + rect.top - 80;
-        window.scrollTo({ top: offset, behavior: "smooth" });
-      }
-    }, 80);
   }
 
   document.getElementById("btn-register").addEventListener("click", () => showSheet(sheetRegister));
@@ -4089,6 +4064,7 @@
       return;
     }
     showSheet(sheetOrders);
+    scrollOrdersSheetToTop();
     fetchOrders();
   }
 
