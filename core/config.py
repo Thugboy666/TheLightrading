@@ -9,7 +9,7 @@ class Settings:
 
     # API
     API_HOST: str = os.getenv("THELIGHT_API_HOST", "0.0.0.0")
-    API_PORT: int = int(os.getenv("THELIGHT_API_PORT", "8080"))
+    API_PORT: int = int(os.getenv("THELIGHT_API_PORT", "8090"))
 
     # LLM endpoint (Aspire o remoto)
     LLM_BASE_URL: str = os.getenv("THELIGHT_LLM_BASE_URL", "http://127.0.0.1:8081")
@@ -19,7 +19,7 @@ class Settings:
     LLM_MODEL: str = os.getenv("THELIGHT_LLM_MODEL", "local-7b")
 
     # Database
-    DB_PATH: Path = BASE_DIR / "data" / "db.sqlite3"
+    DB_PATH: Path = BASE_DIR / "data" / "db" / "thelight_universe.db"
 
     # Logging
     LOG_PATH: Path = BASE_DIR / "data" / "logs" / "system.log"

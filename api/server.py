@@ -1685,27 +1685,22 @@ def create_app() -> web.Application:
 
 
 import sys
+from core.config import settings
 
 
 def main():
     app = create_app()
-    port = 8090
+    host = settings.API_HOST
+    port = settings.API_PORT
 
     if len(sys.argv) > 1:
         try:
-            requested_port = int(sys.argv[1])
-            if requested_port != 8090:
-                logger.warning(
-                    "Richiesta porta %s, ma TheLightrading usa solo 8090. Ignoro override.",
-                    requested_port,
-                )
-            else:
-                port = requested_port
+            port = int(sys.argv[1])
         except ValueError:
-            logger.warning("Parametro porta non valido (%s), uso 8090.", sys.argv[1])
+            logger.warning("Parametro porta non valido (%s), uso %s.", sys.argv[1], port)
 
-    logger.info("TheLightrading API starting on port %s", port)
-    web.run_app(app, host="0.0.0.0", port=port)
+    logger.info("TheLightrading API starting on %s:%s", host, port)
+    web.run_app(app, host=host, port=port)
 
 
 if __name__ == "__main__":
