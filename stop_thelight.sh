@@ -1,45 +1,26 @@
-#!/usr/bin/env sh
-# Spegnimento ordinato di TheLight24
+#!/data/data/com.termux/files/usr/bin/sh
+# Stop TheLightrading backend server
+
 set -eu
 
-BASEDIR="$(cd "$(dirname "$0")" && pwd)"
-RUN_DIR="$BASEDIR/run"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
-stop_service() {
-  NAME="$1"
-  PIDFILE="$RUN_DIR/$NAME.pid"
+PID_FILE="$SCRIPT_DIR/thelightrading.pid"
 
-  if [ ! -f "$PIDFILE" ]; then
-    echo "ℹ️  $NAME non ha PID file. Skip."
-    return
-  fi
-
-  PID="$(cat "$PIDFILE" 2>/dev/null || true)"
-
-  if [ -z "$PID" ]; then
-    echo "ℹ️  $NAME PID vuoto. Skip."
-    rm -f "$PIDFILE" 2>/dev/null || true
-    return
-  fi
-
-  if kill -0 "$PID" 2>/dev/null; then
-    echo "⛔ Stop $NAME (PID $PID)..."
-    kill "$PID" 2>/dev/null || true
-    sleep 1
-    if kill -0 "$PID" 2>/dev/null; then
-      echo "⚠️  Forzo kill -9 su $NAME..."
-      kill -9 "$PID" 2>/dev/null || true
+if [ -f "$PID_FILE" ]; then
+    PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "${PID:-}" ] && kill "$PID" 2>/dev/null; then
+        echo "Stopped TheLightrading server (PID $PID)"
+    else
+        echo "No running TheLightrading process for PID $PID"
     fi
-  else
-    echo "ℹ️  $NAME non è attivo."
-  fi
+    rm -f "$PID_FILE"
+    exit 0
+fi
 
-  rm -f "$PIDFILE" 2>/dev/null || true
-  echo "✔️  $NAME stoppato."
-}
-
-echo "----- 🔻 STOP THELIGHT24 🔻 -----"
-stop_service "gui"
-stop_service "llm"
-echo "--------------------------------"
-echo "✅ Tutti i servizi stoppati."
+if pkill -f "api/server.py 8090" 2>/dev/null || pkill -f "api/server.py" 2>/dev/null; then
+    echo "Stopped TheLightrading server using fallback search"
+else
+    echo "No TheLightrading server process found"
+fi
