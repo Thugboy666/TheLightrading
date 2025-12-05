@@ -47,13 +47,15 @@
       gap: 6px;
       min-height: 46px;
     }
-    .top-bar-row {
+    .top-bar-main {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       width: 100%;
+      min-width: 0;
     }
+    .top-bar-secondary { width: 100%; }
     #brand {
       display: flex;
       flex-direction: column;
@@ -94,12 +96,13 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
+    #btn-register { display: none; }
     .daily-offer-wrapper {
       display: flex;
-      flex-direction: row;
       align-items: center;
+      justify-content: space-between;
       gap: 10px;
-      flex-wrap: nowrap;
+      width: 100%;
     }
     .daily-offer-btn {
       display: inline-flex;
@@ -286,10 +289,7 @@
       #brand-title { font-size: 11px; }
       #brand-sub { display: none; }
       #user-panel { gap: 4px; }
-      .daily-offer-wrapper {
-        flex-wrap: wrap;
-        row-gap: 6px;
-      }
+      .daily-offer-wrapper { gap: 6px; }
       .quick-actions-row { justify-content: flex-start; }
       #btn-orders, #btn-login, #btn-register {
         padding-inline: 6px;
@@ -836,7 +836,7 @@
 
   <!-- TOP BAR -->
   <div id="top-bar">
-    <div class="top-bar-row">
+    <div class="top-bar-main">
       <div id="brand">
         <a
           href="https://www.ormanet.it"
@@ -850,6 +850,20 @@
         <div id="brand-title"></div>
       </div>
 
+      <div id="user-panel">
+        <div class="pill" id="tier-pill">
+          <span class="label">Listino:</span>
+          <span id="tier-label">ospite</span>
+        </div>
+        <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
+        <button class="btn secondary" id="btn-orders">📄 Ordini</button>
+        <button class="btn secondary" id="btn-login">Login</button>
+        <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
+        <button class="btn" id="btn-register">Registrati</button>
+      </div>
+    </div>
+
+    <div class="top-bar-secondary">
       <div class="daily-offer-wrapper">
         <button class="btn daily-offer-btn" id="btn-daily-offer">
           <span class="daily-offer-icon">
@@ -900,27 +914,15 @@
         </div>
       </div>
     </div>
+  </div>
 
-    <div id="user-panel">
-      <div class="pill" id="tier-pill">
-        <span class="label">Listino:</span>
-        <span id="tier-label">ospite</span>
-      </div>
-      <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
-      <button class="btn secondary" id="btn-orders">📄 Ordini</button>
-      <button class="btn secondary" id="btn-login">Login</button>
-      <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
-      <button class="btn" id="btn-register">Registrati</button>
-    </div>
-
-    <div id="top-right-controls">
-      <button id="btn-back" class="top-ctrl-btn">
-        <span class="icon">←</span><span>Indietro</span>
-      </button>
-      <button id="btn-open-llm" class="top-ctrl-btn">
-        <span class="icon">✦</span><span>Chat AI</span>
-      </button>
-    </div>
+  <div id="top-right-controls">
+    <button id="btn-back" class="top-ctrl-btn">
+      <span class="icon">←</span><span>Indietro</span>
+    </button>
+    <button id="btn-open-llm" class="top-ctrl-btn">
+      <span class="icon">✦</span><span>Chat AI</span>
+    </button>
   </div>
 
   <!-- BOTTOM PANEL -->
