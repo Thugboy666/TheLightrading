@@ -3,6 +3,11 @@
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$BASEDIR"
 
+if [ "$(basename "$BASEDIR")" != "TheLightrading" ]; then
+    echo "❌ Questo script è riservato al progetto TheLightrading. Directory corrente: $BASEDIR"
+    exit 1
+fi
+
 PID_FILE="thelightrading.pid"
 
 echo "----- 🛑 STOP THELIGHTRADING -----"
