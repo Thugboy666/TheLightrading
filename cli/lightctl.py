@@ -1,13 +1,23 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+from core.config import settings
+
 ROOT = Path(__file__).resolve().parent.parent
 
+
 def start_api():
+    env = {
+        **os.environ,
+        "THELIGHT_API_HOST": settings.API_HOST,
+        "THELIGHT_API_PORT": str(settings.API_PORT),
+    }
     subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8080"],
+        [sys.executable, "start.py"],
         cwd=str(ROOT),
+        env=env,
     )
 
 def main():
