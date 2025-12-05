@@ -191,6 +191,19 @@ def init_db() -> None:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS promo_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                name TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                description TEXT,
+                actions_text TEXT,
+                actions_json TEXT
+            )
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 document_number TEXT NOT NULL,
@@ -817,6 +830,54 @@ def get_meta_value(key: str) -> Optional[str]:
         return row["value"]
 
 
+def save_promo_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    actions = config.get("actions") or config.get("actions_list") or []
+    payload = {
+        "name": config.get("name") or "",
+        "start_date": config.get("start_date"),
+        "end_date": config.get("end_date"),
+        "description": config.get("description") or "",
+        "actions_text": config.get("actions_text") or "",
+        "actions_json": json.dumps(actions, ensure_ascii=False),
+    }
+
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO promo_config (id, name, start_date, end_date, description, actions_text, actions_json)
+            VALUES (1, :name, :start_date, :end_date, :description, :actions_text, :actions_json)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                start_date = excluded.start_date,
+                end_date = excluded.end_date,
+                description = excluded.description,
+                actions_text = excluded.actions_text,
+                actions_json = excluded.actions_json
+            """,
+            payload,
+        )
+    return {**payload, "actions": actions}
+
+
+def get_promo_config() -> Dict[str, Any]:
+    with get_db() as conn:
+        cur = conn.execute(
+            "SELECT name, start_date, end_date, description, actions_text, actions_json FROM promo_config WHERE id = 1"
+        )
+        row = cur.fetchone()
+
+    if not row:
+        return {}
+
+    config = row_to_dict(row)
+    try:
+        config["actions"] = json.loads(config.get("actions_json") or "[]")
+    except Exception:
+        config["actions"] = []
+    config.pop("actions_json", None)
+    return config
+
+
 # ========== NOTIFICATION SETTINGS ========== #
 
 
@@ -1105,6 +1166,8 @@ __all__ = [
     "save_import_metadata",
     "set_meta_value",
     "get_meta_value",
+    "save_promo_config",
+    "get_promo_config",
     "get_notification_settings",
     "update_notification_settings",
     "delete_orders_older_than",

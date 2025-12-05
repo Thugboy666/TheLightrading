@@ -27,6 +27,7 @@ from .db import (
     get_daily_offer,
     get_notification_settings,
     get_product_by_sku,
+    get_promo_config,
     get_promo_summary,
     get_session,
     get_user_by_email,
@@ -40,6 +41,7 @@ from .db import (
     list_discount_rules,
     list_products,
     save_client,
+    save_promo_config,
     save_import_metadata,
     update_notification_settings,
     set_meta_value,
@@ -1009,32 +1011,41 @@ PROMO_CONFIG_META_KEY = "promo_config"
 
 
 async def admin_get_promo_config(request: web.Request) -> web.Response:
-    """Restituisce la configurazione corrente della promo dal meta store."""
+    """Restituisce la configurazione corrente della promo dal database."""
 
-    raw = get_meta_value(PROMO_CONFIG_META_KEY)
-    if not raw:
-        config = {"start_date": None, "end_date": None}
-    else:
-        try:
-            config = json.loads(raw)
-        except Exception:
-            config = {"start_date": None, "end_date": None}
+    config = get_promo_config() or {}
 
-    return web.json_response(config)
+    actions = config.get("actions") or []
+    response_payload = {
+        "name": config.get("name"),
+        "start_date": config.get("start_date"),
+        "end_date": config.get("end_date"),
+        "description": config.get("description"),
+        "actions_text": config.get("actions_text"),
+        "actions": actions,
+        "actions_list": actions,
+    }
+
+    return web.json_response(response_payload)
 
 
 async def admin_save_promo_config(request: web.Request) -> web.Response:
     """Salva la configurazione promo ricevuta dal frontend."""
 
     data = await request.json()
-    config = dict(data)
+    config = {
+        "name": data.get("name") or "",
+        "start_date": data.get("start_date"),
+        "end_date": data.get("end_date"),
+        "description": data.get("description") or "",
+        "actions_text": data.get("actions_text") or "",
+        "actions": data.get("actions") or data.get("actions_list") or [],
+    }
 
-    config.setdefault("start_date", data.get("start_date"))
-    config.setdefault("end_date", data.get("end_date"))
+    save_promo_config(config)
+    set_meta_value("iBadgePromo3D", config["name"])
 
-    set_meta_value(PROMO_CONFIG_META_KEY, json.dumps(config, ensure_ascii=False))
-
-    return web.json_response({"status": "ok", "config": config})
+    return web.json_response({"status": "ok"})
 
 
 PROMO_POINTS = {

@@ -1221,6 +1221,8 @@
       </div>
       <div id="promo-promo-description" class="promo-extra-text" style="display:none;"></div>
       <div id="promo-promo-actions" class="promo-extra-text" style="display:none;"></div>
+      <div id="promo-actions-text-box" class="promo-extra-text" style="display:none;"></div>
+      <div id="promo-actions-list-box" class="promo-extra-text" style="display:none;"></div>
       <div id="promo-points-inactive" style="display:none;">
         Non risulti attivo sulla Promo Natale. Contatta il tuo referente commerciale Ormanet per essere abilitato.
       </div>
@@ -1909,6 +1911,7 @@
     actions_text: "",
     start_date: null,
     end_date: null,
+    actions: [],
   };
   let promoConfig = {
     start_date: null,
@@ -1917,6 +1920,7 @@
     actions: [...defaultPromoActions],
     rules_text: defaultPromoRulesText,
   };
+  let promoActionsList = [...defaultPromoActions];
   let priceList = [];
   let dailyOffer = null;
   let clients = [];
@@ -2193,6 +2197,9 @@
   const promoPointsTitle = document.getElementById("promo-points-title");
   const promoPromoDescription = document.getElementById("promo-promo-description");
   const promoPromoActions = document.getElementById("promo-promo-actions");
+  const promoDescriptionBox = document.getElementById("promo-promo-description");
+  const promoActionsTextBox = document.getElementById("promo-actions-text-box");
+  const promoActionsListBox = document.getElementById("promo-actions-list-box");
 
   const notifyMacroOffersInput = document.getElementById("notify_macro_offers");
   const notifyDailyDealInput = document.getElementById("notify_daily_deal");
@@ -2891,6 +2898,7 @@
     } else if (target === "promo") {
       adminSectionPromo.style.display = "block";
       adminTabPromo.classList.remove("secondary");
+      loadPromoConfig();
     } else {
       adminSectionImport.style.display = "block";
       adminTabImport.classList.remove("secondary");
@@ -3248,7 +3256,7 @@
     return row;
   }
 
-  function renderPromoActionsEditor(actions = []) {
+  function renderPromoActionsEditor(actions = promoActionsList) {
     if (!promoActionsEditor) return;
     promoActionsEditor.innerHTML = "";
     const list = (Array.isArray(actions) && actions.length ? actions : defaultPromoActions).map((action, idx) =>
@@ -3261,9 +3269,32 @@
     updatePromoActionSelectFromEditor();
   }
 
+  function renderPromoActions() {
+    promoConfig.actions = Array.isArray(promoActionsList) ? promoActionsList : [];
+    renderPromoActionsEditor(promoConfig.actions);
+    renderClientActionsList(promoConfig.actions);
+  }
+
   function getPromoDisplayName() {
     const name = (currentPromoConfig?.name || promoConfig?.name || "").trim();
     return name || "Offerta Natale";
+  }
+
+  function renderClientActionsList(actions = []) {
+    if (!promoActionsListBox) return;
+    const items = (Array.isArray(actions) ? actions : []).map((action) => {
+      const label = action?.label || action?.name || "Azione";
+      const pts = typeof action?.points === "number" ? action.points : 0;
+      return `<li>${label} – ${pts} pt</li>`;
+    });
+
+    if (items.length) {
+      promoActionsListBox.style.display = "block";
+      promoActionsListBox.innerHTML = `<strong>Azioni e punti:</strong><ul>${items.join("")}</ul>`;
+    } else {
+      promoActionsListBox.style.display = "none";
+      promoActionsListBox.innerHTML = "";
+    }
   }
 
   function updatePromoTextsFromConfig() {
@@ -3275,14 +3306,19 @@
       promoPointsInactive.textContent = `Non risulti attivo sulla ${getPromoDisplayName()}. Contatta il tuo referente commerciale Ormanet per essere abilitato.`;
     }
 
+    const desc = (currentPromoConfig.description || "").trim();
     if (promoPromoDescription) {
-      const desc = (currentPromoConfig.description || "").trim();
       promoPromoDescription.style.display = desc ? "block" : "none";
       promoPromoDescription.textContent = desc;
     }
+    if (promoDescriptionBox) {
+      promoDescriptionBox.style.display = desc ? "block" : "none";
+      promoDescriptionBox.innerText = desc;
+    }
 
+    const actionsText = (currentPromoConfig.actions_text || "").trim();
     if (promoPromoActions) {
-      const actionsHtml = (currentPromoConfig.actions_text || "")
+      const actionsHtml = actionsText
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0)
@@ -3297,18 +3333,26 @@
         promoPromoActions.innerHTML = "";
       }
     }
+    if (promoActionsTextBox) {
+      promoActionsTextBox.style.display = actionsText ? "block" : "none";
+      promoActionsTextBox.innerText = actionsText;
+    }
+
+    renderClientActionsList(currentPromoConfig.actions || promoActionsList);
   }
 
   function setPromoConfig(cfg = {}) {
     const normalizedActions = (Array.isArray(cfg.actions) && cfg.actions.length ? cfg.actions : defaultPromoActions).map(
       (action, idx) => normalizePromoAction(action, idx)
     );
+    promoActionsList = normalizedActions;
     currentPromoConfig = {
       name: (cfg.name || "").trim(),
       description: cfg.description || "",
       actions_text: cfg.actions_text || "",
       start_date: cfg.start_date || null,
       end_date: cfg.end_date || null,
+      actions: normalizedActions,
     };
     promoConfig = {
       start_date: currentPromoConfig.start_date,
@@ -3322,7 +3366,7 @@
     if (promoEndDateInput) promoEndDateInput.value = currentPromoConfig.end_date || "";
     if (promoDescriptionInput) promoDescriptionInput.value = currentPromoConfig.description || "";
     if (promoActionsInput) promoActionsInput.value = currentPromoConfig.actions_text || "";
-    renderPromoActionsEditor(promoConfig.actions);
+    renderPromoActions();
     if (promoRulesText) promoRulesText.value = promoConfig.rules_text || "";
     updatePromoTextsFromConfig();
     addNataleIcon();
@@ -3441,39 +3485,60 @@
     }
   }
 
+  async function loadPromoSummary() {
+    if (!promoClientSelect || !promoClientSelect.value) return;
+    await fetchPromoSummary(promoClientSelect.value);
+  }
+
   async function loadPromoConfig() {
-    try {
-      const res = await fetch(BASE_URL + "/admin/promo/config", { headers: buildAuthHeaders() });
-      if (!res.ok) return;
-      const cfg = await res.json();
-      setPromoConfig(cfg || {});
-    } catch (e) {
-      console.warn("Config promo non disponibile", e);
+    const res = await fetch("/admin/promo/config");
+    if (!res.ok) return;
+
+    const cfg = await res.json();
+
+    if (promoNameInput) promoNameInput.value = cfg.name || "";
+    if (promoStartDateInput) promoStartDateInput.value = cfg.start_date || "";
+    if (promoEndDateInput) promoEndDateInput.value = cfg.end_date || "";
+    if (promoDescriptionInput) promoDescriptionInput.value = cfg.description || "";
+    if (promoActionsInput) promoActionsInput.value = cfg.actions_text || "";
+
+    promoActionsList = cfg.actions || cfg.actions_list || [];
+    renderPromoActions();
+    setPromoConfig(cfg || {});
+    refreshUniversePromoBadge(cfg.name || "");
+  }
+
+  function refreshUniversePromoBadge(name) {
+    if (window.universe && universe.updatePromoLabel) {
+      universe.updatePromoLabel(name);
     }
   }
 
   async function savePromoConfig() {
+    promoActionsList = collectPromoActionsFromEditor();
     const payload = {
-      start_date: promoStartDateInput?.value || null,
-      end_date: promoEndDateInput?.value || null,
-      name: promoNameInput?.value || "Offerta Natale",
-      description: promoDescriptionInput?.value || "",
-      actions_text: promoActionsInput?.value || "",
-      actions: collectPromoActionsFromEditor(),
-      rules_text: promoRulesText?.value || "",
+      name: document.getElementById("promo-name").value,
+      start_date: document.getElementById("promo-start-date").value,
+      end_date: document.getElementById("promo-end-date").value,
+      description: document.getElementById("promo-description").value,
+      actions_text: document.getElementById("promo-actions-text").value,
+      actions: promoActionsList
     };
+
     setPromoConfig(payload);
-    try {
-      const res = await fetch(BASE_URL + "/admin/promo/config", {
-        method: "POST",
-        headers: buildAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Non salvata su backend");
-      showToast("Config promo aggiornata");
-    } catch (e) {
-      console.warn("Salvataggio config promo locale", e);
-      showToast("Config promo salvata solo lato frontend", false);
+
+    const res = await fetch("/admin/promo/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      showToast("Config promo salvata");
+      await loadPromoSummary();
+      refreshUniversePromoBadge(payload.name);
+    } else {
+      showToast("Errore salvataggio config promo");
     }
   }
 
@@ -4864,7 +4929,12 @@
   const universe = {
     name: "TheLight24 Galaxy",
     systems: offersUniverse,
+    promoBadge: null,
+    updatePromoLabel(name) {
+      if (this.promoBadge) this.promoBadge.text = name;
+    },
   };
+  window.universe = universe;
 
   // === THREE.JS SCENE ===
   const scene = new THREE.Scene();
@@ -4990,10 +5060,21 @@
     }
 
     if (nataleNode) {
-      createFloatingTagForObject(nataleNode.mesh, getPromoBadgeLabel(), {
+      const tag = createFloatingTagForObject(nataleNode.mesh, getPromoBadgeLabel(), {
         badge: "Promo",
         badgeState: "active",
       });
+      universe.promoBadge = {
+        element: tag,
+        set text(value) {
+          const label = this.element?.querySelector("span");
+          if (label) label.textContent = value;
+        },
+        get text() {
+          const label = this.element?.querySelector("span");
+          return label ? label.textContent : "";
+        },
+      };
     }
   }
 
@@ -6170,7 +6251,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     setupInputAutoScroll();
   });
-  renderPromoActionsEditor(promoConfig.actions);
+  renderPromoActions();
   renderPromoRulesStatic();
   updatePromoTextsFromConfig();
   bootstrapUniverse();
