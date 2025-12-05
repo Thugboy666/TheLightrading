@@ -1598,12 +1598,21 @@ import sys
 def main():
     app = create_app()
     port = 8090
+
     if len(sys.argv) > 1:
         try:
-            port = int(sys.argv[1])
-        except:
-            pass
-    print(f"[INFO] TheLightrading API starting on port {port}")
+            requested_port = int(sys.argv[1])
+            if requested_port != 8090:
+                logger.warning(
+                    "Richiesta porta %s, ma TheLightrading usa solo 8090. Ignoro override.",
+                    requested_port,
+                )
+            else:
+                port = requested_port
+        except ValueError:
+            logger.warning("Parametro porta non valido (%s), uso 8090.", sys.argv[1])
+
+    logger.info("TheLightrading API starting on port %s", port)
     web.run_app(app, host="0.0.0.0", port=port)
 
 
