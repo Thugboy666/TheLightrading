@@ -1,7 +1,6 @@
 import io
 import logging
 import os
-import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -60,7 +59,7 @@ LOG_DIR.mkdir(exist_ok=True)
 
 LOG_FILE = LOG_DIR / "api.log"
 
-logger = logging.getLogger("thelight24.api")
+logger = logging.getLogger("thelightrading.api")
 logger.setLevel(logging.INFO)
 
 # Evita handler duplicati se il modulo viene ricaricato
@@ -82,7 +81,7 @@ if not logger.handlers:
     console.setFormatter(formatter)
     logger.addHandler(console)
 
-logger.info("TheLight24 API avviata (server.py caricato)")
+logger.info("TheLightrading API avviata (server.py caricato)")
 
 
 def log_event(event: str, **extra: Any) -> None:
@@ -123,7 +122,7 @@ db = get_db()
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
 #   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
 #   - altrimenti usiamo THELIGHT_LLM_BASE_URL / completions di default
-LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8081/completion")
+LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8091/completion")
 
 
 # ================== FALLBACK UTILS ==================
@@ -395,7 +394,7 @@ async def ui_index(request: web.Request) -> web.Response:
 async def health(request: web.Request) -> web.Response:
     data = {
         "status": "ok",
-        "project": "TheLight24 v7",
+        "project": "TheLightrading",
         "env": "dev",
         "time": now_iso(),
     }
@@ -1407,7 +1406,7 @@ async def public_daily_offer(request: web.Request) -> web.Response:
 
 async def llm_complete(request: web.Request) -> web.Response:
     """
-    Endpoint interno TheLight24 (non usato dalla GUI attuale)
+    Endpoint interno TheLightrading (non usato dalla GUI attuale)
     POST /llm/complete
     """
     body = await request.json()
@@ -1426,7 +1425,7 @@ async def llm_chat(request: web.Request) -> web.Response:
     """
     Endpoint usato dalla GUI:
     LLM_URL = '/api/llm/chat'
-    Proxi verso il backend 127.0.0.1:8081/completion
+    Proxy verso il backend configurato in LLM_BACKEND_URL
     Normalizziamo SEMPRE in: {"content": "..."}
     """
     payload = await request.json()
@@ -1593,34 +1592,19 @@ def create_app() -> web.Application:
     return app
 
 
-app = create_app()
+import sys
 
 
-def main() -> None:
-    """Avvia il server API aiohttp."""
-    host = "0.0.0.0"
+def main():
+    app = create_app()
     port = 8090
-
-    env_port = os.environ.get("API_PORT")
-    if env_port:
-        try:
-            port = int(env_port)
-        except ValueError:
-            pass
-
     if len(sys.argv) > 1:
         try:
             port = int(sys.argv[1])
-        except ValueError:
+        except:
             pass
-
-    logger.info(
-        "Avvio TheLight24 API server su %s:%s (LLM_BACKEND_URL=%s)",
-        host,
-        port,
-        LLM_BACKEND_URL,
-    )
-    web.run_app(app, host=host, port=port)
+    print(f"[INFO] TheLightrading API starting on port {port}")
+    web.run_app(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
