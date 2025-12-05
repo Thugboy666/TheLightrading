@@ -1741,14 +1741,23 @@
         </div>
       </div>
       <div id="admin-section-promo" style="display:none;">
-        <h3 style="margin:4px 0;">Promo Natale / Biglietto regalo</h3>
+        <h3 style="margin:4px 0;"></h3>
+        <div class="field">
+          <label for="promo-name">Nome promo</label>
+          <input
+            id="promo-name"
+            type="text"
+            class="input-text"
+            placeholder="Es. Offerta Natale, Black Friday B2B..."
+          />
+        </div>
         <div class="two-cols">
           <div class="field">
-            <label>Data inizio promo</label>
+            <label for="promo-start-date">Data inizio promo</label>
             <input id="promo-start-date" type="date" />
           </div>
           <div class="field">
-            <label>Data fine promo</label>
+            <label for="promo-end-date">Data fine promo</label>
             <input id="promo-end-date" type="date" />
           </div>
         </div>
@@ -1774,33 +1783,36 @@
           placeholder="Digita una parte del nome cliente..."
           autocomplete="off"
         />
-        <div class="two-cols">
-          <div class="field">
-            <label>Cliente promo</label>
-            <select id="promo-client-select"></select>
-          </div>
-          <div class="field">
-            <label>Punti attuali</label>
-            <input id="promo-client-points" type="text" readonly />
-          </div>
+        <div class="field">
+          <label>Cliente promo</label>
+          <select id="promo-client-select"></select>
+        </div>
+        <div class="field">
+          <label>Punti attuali</label>
+          <input id="promo-client-points" type="text" readonly />
         </div>
         <div class="field">
           <label>Azione</label>
-          <select id="promo-action-select">
-            <option value="">Seleziona azione</option>
-            <option value="FOLLOW_SOCIAL">FOLLOW_SOCIAL – +5 punti</option>
-            <option value="ADD_BROADCAST">ADD_BROADCAST – +50 punti</option>
-            <option value="ORDER_REMAN">ORDER_REMAN – +100 punti</option>
-            <option value="REACH_AVG_REVENUE">REACH_AVG_REVENUE – +200 punti</option>
-            <option value="UPSELL_REVENUE">UPSELL_REVENUE – +500 punti</option>
-            <option value="BRING_NEW_COMPANY">BRING_NEW_COMPANY – +1000 punti</option>
-          </select>
+          <select id="promo-action-select"></select>
         </div>
+        <h4>Configurazione azioni punti</h4>
+        <div id="promo-actions-editor"></div>
+        <button type="button" id="promo-action-add" class="btn-secondary">
+          Aggiungi azione
+        </button>
         <div class="sheet-actions" style="margin-top:4px;">
           <button class="btn" id="btn-promo-add-points">Aggiungi punti</button>
         </div>
         <div class="html-preview" id="promo-summary"></div>
-        <div class="html-preview" id="promo-rules-static"></div>
+        <div class="field">
+          <label for="promo-rules-text">Descrizione promo / azioni e punti</label>
+          <textarea
+            id="promo-rules-text"
+            class="textarea"
+            rows="5"
+            placeholder="Descrivi qui regole, azioni e premi della promo..."
+          ></textarea>
+        </div>
       </div>
       <div class="sheet-actions">
         <button class="btn secondary" id="btn-admin-close">Chiudi</button>
@@ -1843,11 +1855,36 @@
     natale: "/assets/textures/offerta_natale.png"
   };
 
+  const defaultPromoActions = [
+    { id: "FOLLOW_SOCIAL", label: "FOLLOW_SOCIAL", points: 5 },
+    { id: "ADD_BROADCAST", label: "ADD_BROADCAST", points: 50 },
+    { id: "ORDER_REMAN", label: "ORDER_REMAN", points: 100 },
+    { id: "REACH_AVG_REVENUE", label: "REACH_AVG_REVENUE", points: 200 },
+    { id: "UPSELL_REVENUE", label: "UPSELL_REVENUE", points: 500 },
+    { id: "BRING_NEW_COMPANY", label: "BRING_NEW_COMPANY", points: 1000 }
+  ];
+
+  const defaultPromoRulesText =
+    "Azioni e punti suggerite:\n" +
+    "- Seguici sui social → 5 punti\n" +
+    "- Aggiungi il numero in rubrica per broadcast WhatsApp → 50 punti\n" +
+    "- Ordine con rigenerati → 100 punti\n" +
+    "- Raggiungi il fatturato medio mensile → 200 punti\n" +
+    "- Fattura più del tuo fatturato medio → 500 punti\n" +
+    "- Porta una nuova azienda alla registrazione → 1000 punti\n" +
+    "Soglie: 350 pt → 1 premio • 850 pt → 1-2 premi • massimo punti → biglietto fortunato.";
+
   const adminSettings = {
     miniOfferEnabled: false,
   };
 
-  let promoConfig = { start_date: null, end_date: null };
+  let promoConfig = {
+    start_date: null,
+    end_date: null,
+    name: "",
+    actions: [...defaultPromoActions],
+    rules_text: defaultPromoRulesText,
+  };
   let priceList = [];
   let dailyOffer = null;
   let clients = [];
@@ -2110,12 +2147,15 @@
   const promoClientSelect = document.getElementById("promo-client-select");
   const promoClientPoints = document.getElementById("promo-client-points");
   const promoActionSelect = document.getElementById("promo-action-select");
+  const promoActionsEditor = document.getElementById("promo-actions-editor");
+  const promoActionAddBtn = document.getElementById("promo-action-add");
+  const promoNameInput = document.getElementById("promo-name");
+  const promoRulesText = document.getElementById("promo-rules-text");
   const btnPromoAddPoints = document.getElementById("btn-promo-add-points");
   const btnPromoSaveConfig = document.getElementById("btn-promo-save-config");
   const promoStartDateInput = document.getElementById("promo-start-date");
   const promoEndDateInput = document.getElementById("promo-end-date");
   const promoSummaryBox = document.getElementById("promo-summary");
-  const promoRulesStatic = document.getElementById("promo-rules-static");
 
   const notifyMacroOffersInput = document.getElementById("notify_macro_offers");
   const notifyDailyDealInput = document.getElementById("notify_daily_deal");
@@ -2324,6 +2364,19 @@
   if (promoClientSearchInput) {
     promoClientSearchInput.addEventListener("input", (e) => {
       filterPromoClientsBySearchTerm(e.target.value);
+    });
+  }
+  if (promoActionAddBtn) {
+    promoActionAddBtn.addEventListener("click", () => {
+      const currentActions = collectPromoActionsFromEditor();
+      const newAction = normalizePromoAction(
+        { id: `promo-action-${Date.now()}`, label: "Nuova azione", points: 0 },
+        currentActions.length
+      );
+      if (promoActionsEditor) {
+        promoActionsEditor.appendChild(createPromoActionRow(newAction, currentActions.length));
+      }
+      updatePromoActionSelectFromEditor();
     });
   }
   if (dailyProductSearchInput) {
@@ -3051,35 +3104,150 @@
     renderDailySummary();
   }
 
+  function normalizePromoAction(action = {}, idx = 0) {
+    const normalizedPoints = Number.parseInt(action.points, 10);
+    return {
+      id: action.id || `promo-action-${Date.now()}-${idx}`,
+      label: (action.label || action.name || action.title || action.code || action.id || `Azione ${idx + 1}`).toString(),
+      points: Number.isFinite(normalizedPoints) ? normalizedPoints : 0,
+    };
+  }
+
+  function collectPromoActionsFromEditor() {
+    if (!promoActionsEditor) return [];
+    const rows = Array.from(promoActionsEditor.querySelectorAll(".promo-action-row"));
+    return rows.map((row, idx) => {
+      const nameInput = row.querySelector('input[type="text"]');
+      const pointsInput = row.querySelector('input[type="number"]');
+      const label = (nameInput?.value || `Azione ${idx + 1}`).trim();
+      const parsedPoints = Number.parseInt(pointsInput?.value, 10);
+      return {
+        id: row.dataset.actionId || label || `promo-action-${idx + 1}`,
+        label: label || `Azione ${idx + 1}`,
+        points: Number.isFinite(parsedPoints) ? parsedPoints : 0,
+      };
+    });
+  }
+
+  function updatePromoActionSelectFromEditor() {
+    if (!promoActionSelect) return;
+    const previousValue = promoActionSelect.value;
+    const actions = collectPromoActionsFromEditor();
+    promoActionSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Seleziona azione";
+    promoActionSelect.appendChild(placeholder);
+
+    actions.forEach((action) => {
+      const opt = document.createElement("option");
+      opt.value = action.id;
+      const pts = Number.isFinite(action.points) ? action.points : 0;
+      const label = action.label || action.id || "Azione";
+      opt.textContent = `${label} – +${pts} punti`;
+      promoActionSelect.appendChild(opt);
+    });
+
+    if (previousValue && actions.some((a) => a.id === previousValue)) {
+      promoActionSelect.value = previousValue;
+    }
+  }
+
+  function createPromoActionRow(action, idx = 0) {
+    const normalized = normalizePromoAction(action, idx);
+    const row = document.createElement("div");
+    row.className = "promo-action-row";
+    row.dataset.actionId = normalized.id;
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr 120px 90px";
+    row.style.gap = "8px";
+    row.style.alignItems = "end";
+    row.style.marginBottom = "6px";
+
+    const nameField = document.createElement("div");
+    nameField.className = "field";
+    nameField.style.margin = "0";
+    const nameLabel = document.createElement("label");
+    nameLabel.textContent = "Nome azione";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "input-text";
+    nameInput.placeholder = "Es. Follow_social";
+    nameInput.value = normalized.label || "";
+    nameInput.addEventListener("input", updatePromoActionSelectFromEditor);
+    nameField.appendChild(nameLabel);
+    nameField.appendChild(nameInput);
+
+    const pointsField = document.createElement("div");
+    pointsField.className = "field";
+    pointsField.style.margin = "0";
+    const pointsLabel = document.createElement("label");
+    pointsLabel.textContent = "Punti";
+    const pointsInput = document.createElement("input");
+    pointsInput.type = "number";
+    pointsInput.className = "input-text";
+    pointsInput.step = "1";
+    pointsInput.value = Number.isFinite(normalized.points) ? normalized.points : 0;
+    pointsInput.addEventListener("input", updatePromoActionSelectFromEditor);
+    pointsField.appendChild(pointsLabel);
+    pointsField.appendChild(pointsInput);
+
+    const removeField = document.createElement("div");
+    removeField.className = "field";
+    removeField.style.margin = "0";
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn secondary";
+    removeBtn.textContent = "Rimuovi";
+    removeBtn.addEventListener("click", () => {
+      row.remove();
+      updatePromoActionSelectFromEditor();
+    });
+    removeField.appendChild(removeBtn);
+
+    row.appendChild(nameField);
+    row.appendChild(pointsField);
+    row.appendChild(removeField);
+    return row;
+  }
+
+  function renderPromoActionsEditor(actions = []) {
+    if (!promoActionsEditor) return;
+    promoActionsEditor.innerHTML = "";
+    const list = (Array.isArray(actions) && actions.length ? actions : defaultPromoActions).map((action, idx) =>
+      normalizePromoAction(action, idx)
+    );
+    list.forEach((action, idx) => {
+      const row = createPromoActionRow(action, idx);
+      promoActionsEditor.appendChild(row);
+    });
+    updatePromoActionSelectFromEditor();
+  }
+
   function setPromoConfig(cfg = {}) {
+    const normalizedActions = (Array.isArray(cfg.actions) && cfg.actions.length ? cfg.actions : defaultPromoActions).map(
+      (action, idx) => normalizePromoAction(action, idx)
+    );
     promoConfig = {
       start_date: cfg.start_date || null,
       end_date: cfg.end_date || null,
+      name: cfg.name || "",
+      actions: normalizedActions,
+      rules_text: cfg.rules_text || cfg.rulesText || defaultPromoRulesText,
     };
+    if (promoNameInput) promoNameInput.value = promoConfig.name || "";
     if (promoStartDateInput) promoStartDateInput.value = promoConfig.start_date || "";
     if (promoEndDateInput) promoEndDateInput.value = promoConfig.end_date || "";
+    renderPromoActionsEditor(promoConfig.actions);
+    if (promoRulesText) promoRulesText.value = promoConfig.rules_text || "";
+    addNataleIcon();
   }
 
   function renderPromoRulesStatic() {
-    if (!promoRulesStatic) return;
-    promoRulesStatic.innerHTML = `
-      <p><strong>Azioni e punti:</strong></p>
-      <ul>
-        <li>Seguici sui social → 5 punti</li>
-        <li>Aggiungi il numero in rubrica per broadcast WhatsApp → 50 punti</li>
-        <li>Ordine con rigenerati → 100 punti</li>
-        <li>Raggiungi il fatturato medio mensile → 200 punti</li>
-        <li>Fattura più del tuo fatturato medio → 500 punti</li>
-        <li>Porta una nuova azienda alla registrazione → 1000 punti</li>
-      </ul>
-      <p><strong>Soglie:</strong></p>
-      <ul>
-        <li>350 pt → 1 premio</li>
-        <li>850 pt → 1 o 2 premi</li>
-        <li>Massimo punti → Biglietto fortunato</li>
-      </ul>
-      <p><strong>Biglietto fortunato:</strong> spedizione gratuita prime 2 settimane di gennaio, sconto massimo sul fatturato di gennaio, omaggi sui prodotti trattati + sconto minimo per 3 mesi sulla categoria trattata.</p>
-    `;
+    if (!promoRulesText) return;
+    if (!promoRulesText.value) {
+      promoRulesText.value = defaultPromoRulesText;
+    }
   }
 
   function getPromoTierLabel(summary) {
@@ -3203,6 +3371,9 @@
     const payload = {
       start_date: promoStartDateInput?.value || null,
       end_date: promoEndDateInput?.value || null,
+      name: promoNameInput?.value || "",
+      actions: collectPromoActionsFromEditor(),
+      rules_text: promoRulesText?.value || "",
     };
     setPromoConfig(payload);
     try {
@@ -4732,7 +4903,7 @@
     }
 
     if (nataleNode) {
-      createFloatingTagForObject(nataleNode.mesh, "Offerta Natale", {
+      createFloatingTagForObject(nataleNode.mesh, getPromoBadgeLabel(), {
         badge: "Promo",
         badgeState: "active",
       });
@@ -5376,6 +5547,10 @@
     return `Periodo promo: ${startLabel} → ${endLabel}`;
   }
 
+  function getPromoBadgeLabel() {
+    return (promoConfig.name || "").trim() || "Offerta Natale";
+  }
+
   function isPromoActiveNow() {
     const today = new Date();
     const start = promoConfig.start_date ? new Date(promoConfig.start_date) : null;
@@ -5906,6 +6081,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     setupInputAutoScroll();
   });
+  renderPromoActionsEditor(promoConfig.actions);
   renderPromoRulesStatic();
   bootstrapUniverse();
 
