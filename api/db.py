@@ -830,8 +830,37 @@ def get_meta_value(key: str) -> Optional[str]:
         return row["value"]
 
 
+def save_clients_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    payload = settings or {}
+    set_meta_value("admin_clients_settings", json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
+def save_macro_offers(offers: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    payload: List[Dict[str, Any]] = []
+    if offers:
+        payload = [dict(item) for item in offers]
+    set_meta_value("admin_macro_offers", json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
+def save_price_list_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {
+        "listino_attivo": config.get("listino_attivo"),
+        "ultima_importazione": config.get("ultima_importazione"),
+        "flags": config.get("flags") or config.get("flag") or {},
+    }
+    set_meta_value("price_list_config", json.dumps(payload, ensure_ascii=False))
+    if payload["ultima_importazione"]:
+        set_meta_value("price_list_last_import_at", payload["ultima_importazione"])
+    if payload["listino_attivo"]:
+        set_meta_value("price_list_active", str(payload["listino_attivo"]))
+    return payload
+
+
 def save_promo_config(config: Dict[str, Any]) -> Dict[str, Any]:
     actions = config.get("actions") or config.get("actions_list") or []
+    adherents = config.get("adherents") or []
     payload = {
         "name": config.get("name") or "",
         "start_date": config.get("start_date"),
@@ -856,7 +885,11 @@ def save_promo_config(config: Dict[str, Any]) -> Dict[str, Any]:
             """,
             payload,
         )
-    return {**payload, "actions": actions}
+    set_meta_value("promo_adherents", json.dumps(adherents, ensure_ascii=False))
+    set_meta_value("promo_actions_text", payload["actions_text"])
+    set_meta_value("promo_gift_badge", payload["name"])
+    set_meta_value("promo_points_state_last_update", datetime.now(timezone.utc).isoformat())
+    return {**payload, "actions": actions, "adherents": adherents}
 
 
 def get_promo_config() -> Dict[str, Any]:
@@ -1166,6 +1199,9 @@ __all__ = [
     "save_import_metadata",
     "set_meta_value",
     "get_meta_value",
+    "save_clients_settings",
+    "save_macro_offers",
+    "save_price_list_config",
     "save_promo_config",
     "get_promo_config",
     "get_notification_settings",

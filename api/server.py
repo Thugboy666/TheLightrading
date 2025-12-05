@@ -41,6 +41,9 @@ from .db import (
     list_discount_rules,
     list_products,
     save_client,
+    save_clients_settings,
+    save_macro_offers,
+    save_price_list_config,
     save_promo_config,
     save_import_metadata,
     update_notification_settings,
@@ -1048,6 +1051,46 @@ async def admin_save_promo_config(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+async def admin_save_clients_settings(request: web.Request) -> web.Response:
+    payload = await request.json()
+    save_clients_settings(payload)
+    set_meta_value("admin_clients_last_update", now_iso())
+    return web.json_response({"status": "ok"})
+
+
+async def admin_save_macro_offers(request: web.Request) -> web.Response:
+    payload = await request.json()
+    save_macro_offers(payload if isinstance(payload, list) else [])
+    set_meta_value("iBadgeScontoAttivo", "attivo")
+    set_meta_value("macro_offers_saved_at", now_iso())
+    return web.json_response({"status": "ok"})
+
+
+async def admin_save_price_list(request: web.Request) -> web.Response:
+    payload = await request.json()
+    save_price_list_config(payload)
+    set_meta_value("price_list_saved_at", now_iso())
+    return web.json_response({"status": "ok"})
+
+
+async def admin_save_promo(request: web.Request) -> web.Response:
+    payload = await request.json()
+    promo_payload = {
+        "name": payload.get("name") or "",
+        "start_date": payload.get("start_date"),
+        "end_date": payload.get("end_date"),
+        "description": payload.get("description") or "",
+        "actions_text": payload.get("actions_text") or payload.get("actionsText") or "",
+        "actions": payload.get("actions") or payload.get("actions_list") or [],
+        "adherents": payload.get("adherents") or [],
+    }
+    save_promo_config(promo_payload)
+    set_meta_value("iBadgePromo3D", promo_payload["name"])
+    set_meta_value("promo_gift_badge", promo_payload["name"])
+    set_meta_value("promo_points_state_last_update", now_iso())
+    return web.json_response({"status": "ok"})
+
+
 PROMO_POINTS = {
     "FOLLOW_SOCIAL": 5,
     "ADD_BROADCAST": 50,
@@ -1603,17 +1646,21 @@ def create_app() -> web.Application:
     app.router.add_post("/admin/clients/save", admin_clients_save)
     app.router.add_post("/admin/clients/delete", admin_clients_delete)
     app.router.add_post("/admin/clients/import_promo", admin_clients_import_promo)
+    app.router.add_post("/admin/save/clients", admin_save_clients_settings)
     app.router.add_get("/admin/promo/config", admin_get_promo_config)
     app.router.add_post("/admin/promo/config", admin_save_promo_config)
+    app.router.add_post("/admin/save/promo", admin_save_promo)
     app.router.add_post("/admin/promo/add_points", admin_promo_add_points)
     app.router.add_get("/admin/promo/summary", admin_promo_summary)
     app.router.add_get("/admin/offers/all", admin_offers_all)
     app.router.add_post("/admin/offers/save", admin_offers_save)
+    app.router.add_post("/admin/save/macro_offers", admin_save_macro_offers)
     app.router.add_get("/admin/products/all", admin_products_all)
     app.router.add_post("/admin/products/save", admin_product_save)
     app.router.add_delete("/admin/products/{sku}", admin_product_delete)
     app.router.add_post("/admin/price_list/import", admin_price_list_import)
     app.router.add_get("/admin/price_list/status", admin_price_list_status)
+    app.router.add_post("/admin/save/price_list", admin_save_price_list)
     app.router.add_get("/admin/daily-offer", admin_daily_offer_get)
     app.router.add_post("/admin/daily-offer", admin_daily_offer_save)
     app.router.add_delete("/admin/daily-offer", admin_daily_offer_delete)

@@ -277,12 +277,27 @@
     .overlay-active .floating-badge {
       display: none !important;
     }
-    .btn.secondary {
-      background: #ffffff;
-      border: 1px solid var(--accent-color);
-      color: #000000;
-    }
-    .btn:active { transform: scale(0.97); }
+      .btn.secondary {
+        background: #ffffff;
+        border: 1px solid var(--accent-color);
+        color: #000000;
+      }
+      .btn:active { transform: scale(0.97); }
+
+      .save-btn-admin {
+        width: 100%;
+        background: #27ae60;
+        color: white;
+        padding: 14px;
+        font-size: 18px;
+        border-radius: 12px;
+        margin-top: 20px;
+        border: none;
+        font-weight: bold;
+      }
+      .save-btn-admin:active {
+        opacity: 0.7;
+      }
 
     @media (max-width: 480px) {
       #top-bar { padding: 4px 6px; }
@@ -1568,6 +1583,7 @@
             <tbody id="clients-table"></tbody>
           </table>
         </div>
+        <button class="save-btn-admin" onclick="saveAdminClients()">💾 Salva clienti</button>
       </div>
       <div id="admin-section-offers" style="display:none;">
         <h3 style="margin:4px 0;">Macro Offerte</h3>
@@ -1713,6 +1729,7 @@
           </button>
           <p id="notification_settings_status" class="small-hint"></p>
         </section>
+        <button class="save-btn-admin" onclick="saveAdminMacroOffers()">💾 Salva macro offerte</button>
       </div>
       <div id="admin-section-import" style="display:none;">
         <h3 style="margin:4px 0;">Import Listino .XLSX</h3>
@@ -1748,6 +1765,7 @@
         <div class="html-preview" id="price-list-table-wrapper" style="max-height:220px; overflow:auto; margin-top:6px;">
           <!-- Tabella listino generata via JS -->
         </div>
+        <button class="save-btn-admin" onclick="saveAdminPriceList()">💾 Salva import listino</button>
       </div>
       <div id="admin-section-promo" style="display:none;">
         <h3 style="margin:4px 0;"></h3>
@@ -1840,6 +1858,7 @@
             placeholder="Descrivi qui regole, azioni e premi della promo..."
           ></textarea>
         </div>
+        <button class="save-btn-admin" onclick="saveAdminPromo()">💾 Salva promo</button>
       </div>
       <div class="sheet-actions">
         <button class="btn secondary" id="btn-admin-close">Chiudi</button>
@@ -1921,11 +1940,16 @@
     rules_text: defaultPromoRulesText,
   };
   let promoActionsList = [...defaultPromoActions];
+  let promoAdherentsList = [];
   let priceList = [];
   let dailyOffer = null;
   let clients = [];
   let promoClientsAll = [];
   let macroOffers = [];
+  let adminClientsState = { clients: [], filter: "all", sorting: null };
+  let allMacroOffers = [];
+  window.listinoAttivo = window.listinoAttivo || null;
+  window.priceListLastImport = window.priceListLastImport || null;
   const offersUniverse = [
     {
       id: "ormanet",
@@ -2905,6 +2929,17 @@
     }
   }
 
+  function captureAdminClientsState() {
+    const filterValue = clientFilterSelect ? clientFilterSelect.value : "all";
+    adminClientsState = {
+      clients: Array.isArray(clients) ? clients.map((c) => ({ ...c })) : [],
+      filter: filterValue,
+      sorting: adminClientsState.sorting,
+      updated_at: new Date().toISOString(),
+    };
+    return adminClientsState;
+  }
+
   function renderClientsTable() {
     if (!clientsTable) return;
     clientsTable.innerHTML = "";
@@ -2936,6 +2971,7 @@
         }
       });
     });
+    captureAdminClientsState();
   }
 
   function getCurrentClientRecord() {
@@ -3785,6 +3821,8 @@
   function renderPriceListImportStatus(isoString) {
     if (!priceListImportStatus || !priceListImportStatusLabel) return;
 
+    window.priceListLastImport = isoString || null;
+
     if (!isoString) {
       priceListImportStatusLabel.textContent = "Mai eseguita";
       priceListImportStatusLabel.style.color = "#666";
@@ -3824,6 +3862,12 @@
     }
   }
 
+  function syncAllMacroOffers() {
+    const offersFromConfigs = discountConfigs.map((cfg) => ({ ...cfg }));
+    const offersFromList = Array.isArray(macroOffers) ? macroOffers.map((offer) => ({ ...offer })) : [];
+    allMacroOffers = [...offersFromList, ...offersFromConfigs];
+  }
+
   async function addDiscountRule() {
     const offerId = discountOfferSelect.value;
     const segment = discountSegmentSelect.value;
@@ -3843,6 +3887,7 @@
     if (existingIdx >= 0) list[existingIdx] = rule; else list.push(rule);
     cfg.rules[segment] = list;
     renderDiscountPreview();
+    syncAllMacroOffers();
     try {
       const payload = JSON.parse(JSON.stringify(cfg, (k, v) => (v === Infinity ? null : v)));
       await fetch(BASE_URL + "/admin/offers/save", {
@@ -3862,6 +3907,7 @@
     if (!cfg) return;
     cfg.rules[segment] = [];
     renderDiscountPreview();
+    syncAllMacroOffers();
   }
 
   function renderPriceListTable(filterText = "") {
@@ -3929,6 +3975,65 @@
       </tbody>
     </table>
   `;
+  }
+
+  async function saveAdminClients() {
+    const payload = captureAdminClientsState();
+    const res = await fetch("/admin/save/clients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    showToast(res.ok ? "Clienti salvati" : "Errore salvataggio clienti");
+  }
+
+  async function saveAdminMacroOffers() {
+    const payload = allMacroOffers;
+    const res = await fetch("/admin/save/macro_offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    showToast(res.ok ? "Macro offerte salvate" : "Errore salvataggio macro offerte");
+  }
+
+  async function saveAdminPriceList() {
+    const payload = {
+      listino_attivo: window.listinoAttivo,
+      ultima_importazione: window.priceListLastImport,
+    };
+
+    const res = await fetch("/admin/save/price_list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    showToast(res.ok ? "Listino salvato" : "Errore salvataggio listino");
+  }
+
+  async function saveAdminPromo() {
+    const payload = {
+      name: document.getElementById("promo-name").value,
+      start_date: document.getElementById("promo-start-date").value,
+      end_date: document.getElementById("promo-end-date").value,
+      description: document.getElementById("promo-description").value,
+      actions_text: document.getElementById("promo-actions-text").value,
+      actions: promoActionsList,
+      adherents: promoAdherentsList,
+    };
+
+    const res = await fetch("/admin/save/promo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    showToast(res.ok ? "Promo salvata" : "Errore salvataggio promo");
+
+    if (res.ok) refreshUniversePromoBadge(payload.name);
   }
 
   async function uploadPriceList() {
@@ -4732,6 +4837,7 @@
 
   function updateUserUI() {
     tierLabel.textContent = currentUser.tier;
+    window.listinoAttivo = currentUser.tier;
     if (currentUser.logged) {
       document.getElementById("btn-login").textContent = "Account";
       document.getElementById("btn-logout").style.display = "inline-flex";
@@ -6202,6 +6308,7 @@
         });
         return normalized;
       });
+      syncAllMacroOffers();
       // Aggiorna i flag di sconto attivo sulle categorie dell'universo 3D
       syncUniverseCategoryDiscountFlags();
       clients = clientsJson.clients || [];
