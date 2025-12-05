@@ -174,6 +174,14 @@
       background: #fee2c5;
     }
 
+    .discount-row {
+      cursor: pointer;
+    }
+
+    .discount-row.selected {
+      background: #fff2e6;
+    }
+
     .ormanet-logo-link {
       display: inline-flex;
       align-items: center;
@@ -1956,6 +1964,7 @@
   let macroOffers = [];
   let adminClientsState = { clients: [], filter: "all", sorting: null };
   let allMacroOffers = [];
+  let selectedDiscountRule = null;
   window.listinoAttivo = window.listinoAttivo || null;
   window.priceListLastImport = window.priceListLastImport || null;
   const offersUniverse = [
@@ -2427,11 +2436,50 @@
   btnClientSave.addEventListener("click", saveClient);
   clientFilterSelect.addEventListener("change", renderClientsTable);
 
-  discountOfferSelect.addEventListener("change", renderDiscountPreview);
-  discountSegmentSelect.addEventListener("change", renderDiscountPreview);
+  discountOfferSelect.addEventListener("change", () => {
+    selectedDiscountRule = null;
+    renderDiscountPreview();
+  });
+  discountSegmentSelect.addEventListener("change", () => {
+    selectedDiscountRule = null;
+    renderDiscountPreview();
+  });
 
   btnDiscountAdd.addEventListener("click", addDiscountRule);
   btnDiscountRemove.addEventListener("click", removeDiscountRule);
+  if (discountPreview) {
+    discountPreview.addEventListener("click", (e) => {
+      const row = e.target.closest("tr[data-offer-id]");
+      if (!row) return;
+
+      const offerId = row.getAttribute("data-offer-id");
+      const segment = row.getAttribute("data-segment");
+      const min = parseFloat(row.getAttribute("data-min"));
+      const maxAttr = row.getAttribute("data-max");
+      const max = maxAttr === "Infinity" ? Infinity : parseFloat(maxAttr);
+
+      selectedDiscountRule = { offerId, segment, min, max };
+      discountOfferSelect.value = offerId;
+      discountSegmentSelect.value = segment;
+
+      const cfg = discountConfigs.find((c) => c.id === offerId);
+      const rules = cfg?.rules?.[segment] || [];
+      const rule = rules.find(
+        (r) =>
+          r.min === min &&
+          (((!isFinite(r.max) && !isFinite(max)) || r.max === max))
+      );
+
+      if (rule) {
+        discountMinInput.value = rule.min;
+        discountMaxInput.value = !isFinite(rule.max) ? "" : rule.max;
+        discountPercentInput.value = rule.discount;
+        discountValidInput.value = rule.valid_until || "";
+      }
+
+      renderDiscountPreview();
+    });
+  }
   if (miniOfferToggle) {
     miniOfferToggle.addEventListener("change", () => {
       adminSettings.miniOfferEnabled = miniOfferToggle.checked;
@@ -3705,7 +3753,22 @@
         }
         return rules.map((r) => {
           const maxLabel = !isFinite(r.max) || r.max === null ? "∞" : r.max;
-          return `<tr>
+          const maxData = !isFinite(r.max) || r.max === null ? "Infinity" : r.max;
+          const isSelected =
+            selectedDiscountRule &&
+            selectedDiscountRule.offerId === cfg.id &&
+            selectedDiscountRule.segment === segment &&
+            selectedDiscountRule.min === r.min &&
+            (((!isFinite(selectedDiscountRule.max) && !isFinite(r.max)) ||
+              selectedDiscountRule.max === r.max));
+
+          return `<tr
+            class="discount-row${isSelected ? " selected" : ""}"
+            data-offer-id="${cfg.id}"
+            data-segment="${segment}"
+            data-min="${r.min}"
+            data-max="${maxData}"
+          >
             <td style="padding:2px 4px;">${cfg.id}</td>
             <td style="padding:2px 4px;">${findOfferTitle(cfg.id)}</td>
             <td style="padding:2px 4px;">${segment}</td>
@@ -3919,14 +3982,54 @@
     }
   }
 
-  function removeDiscountRule() {
-    const offerId = discountOfferSelect.value;
-    const segment = discountSegmentSelect.value;
-    let cfg = discountConfigs.find((c) => c.id === offerId);
-    if (!cfg) return;
-    cfg.rules[segment] = [];
+  async function removeDiscountRule() {
+    if (!selectedDiscountRule) {
+      alert("Seleziona prima una fascia da rimuovere.");
+      return;
+    }
+
+    const { offerId, segment, min, max } = selectedDiscountRule;
+    const cfg = discountConfigs.find((c) => c.id === offerId);
+    if (!cfg) {
+      selectedDiscountRule = null;
+      renderDiscountPreview();
+      return;
+    }
+
+    const rules = cfg.rules?.[segment] || [];
+    const targetIdx = rules.findIndex(
+      (r) => r.min === min && (((!isFinite(r.max) && !isFinite(max)) || r.max === max))
+    );
+
+    if (targetIdx === -1) {
+      alert("Impossibile trovare la fascia selezionata.");
+      return;
+    }
+
+    const ok = window.confirm("Confermi la rimozione della fascia selezionata?");
+    if (!ok) return;
+
+    rules.splice(targetIdx, 1);
+    cfg.rules[segment] = rules;
+    selectedDiscountRule = null;
+    discountMinInput.value = "";
+    discountMaxInput.value = "";
+    discountPercentInput.value = "";
+    discountValidInput.value = "";
     renderDiscountPreview();
     syncAllMacroOffers();
+
+    try {
+      const payload = JSON.parse(JSON.stringify(cfg, (k, v) => (v === Infinity ? null : v)));
+      await fetch(BASE_URL + "/admin/offers/save", {
+        method: "POST",
+        headers: buildAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      showToast("Fascia rimossa");
+    } catch (e) {
+      showToast("Fascia rimossa solo in locale", false);
+    }
   }
 
   function renderPriceListTable(filterText = "") {
